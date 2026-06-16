@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ТСД РЦ-1 · Склад</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<style>
+  :root{
+    --ink:#14181d; --paper:#f4f6f8; --card:#ffffff; --line:#d7dde3;
+    --mut:#6b7682;
+    --c-sku:#1f6fd6; --c-skua:#0e8f86; --c-addr:#d97a16; --c-recv:#2e9447; --c-find:#7a4fd0; --c-set:#5a6572;
+    --ok:#2e9447; --err:#c93434;
+    --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--paper);color:var(--ink);
+       display:flex;flex-direction:column;overflow:hidden;font-size:16px}
+
+  /* ── шапка ── */
+  header{background:var(--ink);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+  header .logo{font-weight:800;letter-spacing:.06em;font-size:17px}
+  header .logo span{color:#ffb454}
+  header .sync{margin-left:auto;font-size:12px;color:#9aa6b2;text-align:right;line-height:1.3}
+  header .sync b{color:#fff;font-family:var(--mono)}
+
+  /* ── цветная полоса режима ── */
+  #modeBar{height:6px;flex-shrink:0;transition:background .15s}
+
+  /* ── контент ── */
+  main{flex:1;overflow-y:auto;padding:14px;padding-bottom:90px}
+  .screen{display:none}
+  .screen.active{display:block}
+  h2.mode-title{font-size:14px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);margin-bottom:10px;
+    display:flex;align-items:center;gap:8px}
+  h2.mode-title::before{content:'';width:10px;height:10px;border-radius:2px;background:var(--mode,#999)}
+
+  /* ── поле сканирования ── */
+  .scanbox{position:relative;margin-bottom:12px}
+  .scanbox input{width:100%;padding:16px 14px;font-size:22px;font-family:var(--mono);font-weight:600;
+    border:2px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);outline:none}
+  .scanbox input:focus{border-color:var(--mode,#1f6fd6)}
+  .scanbox label{position:absolute;top:-8px;left:12px;background:var(--paper);padding:0 6px;font-size:12px;
+    color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+  .hint{font-size:13px;color:var(--mut);margin:-6px 0 12px 2px}
+
+  /* ── карточки ── */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .card .nm{font-size:19px;font-weight:700;line-height:1.25;margin-bottom:6px}
+  .card .meta{font-size:14px;color:var(--mut)}
+  .card .meta b{color:var(--ink);font-family:var(--mono)}
+  .addr-big{font-family:var(--mono);font-size:42px;font-weight:800;letter-spacing:.02em;margin:8px 0;
+    color:var(--c-addr)}
+  .nf{padding:14px;border:2px dashed var(--err);border-radius:12px;color:var(--err);font-weight:600;margin-bottom:12px}
+
+  /* ── кнопки ── */
+  button{font-family:inherit;cursor:pointer;border:none}
+  .btn{display:block;width:100%;padding:17px;font-size:18px;font-weight:800;border-radius:12px;
+    background:var(--mode,#1f6fd6);color:#fff;letter-spacing:.02em;margin-bottom:10px}
+  .btn:active{transform:scale(.985)}
+  .btn.sec{background:var(--card);color:var(--ink);border:2px solid var(--line)}
+  .btn.ghost{background:none;color:var(--mut);font-weight:600;font-size:15px;padding:10px}
+  .btn:disabled{opacity:.4}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* ── шаги приёмки ── */
+  .step{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
+  .step .num{width:30px;height:30px;border-radius:50%;background:var(--line);color:var(--mut);font-weight:800;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
+  .step.on .num{background:var(--c-recv);color:#fff}
+  .step.done .num{background:var(--ink);color:#fff}
+  .step .body{flex:1}
+
+  /* ── превью этикетки ── */
+  .preview{background:#e9edf1;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px;text-align:center}
+  .preview canvas{width:100%;max-width:330px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);border-radius:4px}
+  .preview .cap{font-size:12px;color:var(--mut);margin-top:6px}
+
+  /* ── результаты поиска ── */
+  .res{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:8px}
+  .res .rn{font-weight:700;font-size:15px;line-height:1.3}
+  .res .rm{font-size:13px;color:var(--mut);font-family:var(--mono);margin-top:3px}
+  .res .rm .ra{color:var(--c-addr);font-weight:700}
+
+  /* ── настройки ── */
+  .set-group{margin-bottom:16px}
+  .set-group label{display:block;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+  .set-group input,.set-group select{width:100%;padding:12px;font-size:15px;border:2px solid var(--line);
+    border-radius:8px;background:var(--card);color:var(--ink);font-family:var(--mono)}
+  .pill{display:inline-block;background:var(--line);border-radius:20px;padding:3px 10px;font-size:12px;
+    font-family:var(--mono);color:var(--ink);margin-left:6px}
+
+  /* ── нижняя навигация ── */
+  nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);
+    display:grid;grid-template-columns:repeat(6,1fr);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  nav button{background:none;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;
+    border-radius:10px;color:var(--mut)}
+  nav button .ic{font-size:21px;line-height:1}
+  nav button .lb{font-size:10px;font-weight:700;letter-spacing:.02em}
+  nav button.on{color:#fff}
+  nav button.on.t-sku{background:var(--c-sku)} nav button.on.t-skua{background:var(--c-skua)}
+  nav button.on.t-addr{background:var(--c-addr)} nav button.on.t-recv{background:var(--c-recv)}
+  nav button.on.t-find{background:var(--c-find)} nav button.on.t-set{background:var(--c-set)}
+
+  /* ── тосты ── */
+  #toast{position:fixed;left:14px;right:14px;bottom:96px;background:var(--ink);color:#fff;padding:13px 16px;
+    border-radius:12px;font-weight:700;font-size:15px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:60;
+    text-align:center}
+  #toast.show{opacity:1}
+  #toast.ok{background:var(--ok)} #toast.err{background:var(--err)}
+
+  .session-count{font-family:var(--mono);font-size:13px;color:var(--mut);text-align:center;margin-top:4px}
+  .zpl-out{width:100%;height:120px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);
+    border-radius:8px;padding:8px;margin-bottom:10px}
+
+  /* ── маркування комірки ── */
+  .cell-card{background:var(--c-recv);color:#fff;border-radius:12px;padding:14px;margin-bottom:12px;
+    display:flex;align-items:center;gap:12px}
+  .cell-card .ca{font-family:var(--mono);font-size:44px;font-weight:800;letter-spacing:.02em;flex:1}
+  .cell-card .cl{font-size:12px;text-transform:uppercase;letter-spacing:.1em;opacity:.85}
+  .cell-empty{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;
+    color:var(--mut);font-weight:600;margin-bottom:12px}
+  .scan-item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 13px;
+    margin-bottom:7px;display:flex;align-items:center;gap:10px}
+  .scan-item .si-sku{font-family:var(--mono);font-weight:700;font-size:16px}
+  .scan-item .si-nm{font-size:13px;color:var(--mut);flex:1;line-height:1.25}
+  .badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:12px;letter-spacing:.04em;flex-shrink:0}
+  .badge.new{background:#e3f0e7;color:var(--c-recv)}
+  .badge.mov{background:#fbeede;color:var(--c-addr)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">РЦ-1 <span>·</span> ТСД</div>
+  <div class="sync"><b id="baseCount">0</b> SKU<br><span id="syncTime">база не завантажена</span></div>
+</header>
+<div id="modeBar"></div>
+
+<main>
+
+  <!-- ════ РЕЖИМ 1: ЕТИКЕТКА SKU ════ -->
+  <section class="screen" id="scr-sku" style="--mode:var(--c-sku)">
+    <h2 class="mode-title">Етикетка SKU — штрихкод + назва</h2>
+    <div class="scanbox">
+      <label>Скануйте або введіть SKU</label>
+      <input id="in-sku" inputmode="none" autocomplete="off" placeholder="▮">
+    </div>
+    <div class="hint">Курсор у полі → натисніть кнопку сканера на ТСД</div>
+    <div id="sku-card"></div>
+    <div id="sku-preview"></div>
+  </section>
+
+  <!-- ════ РЕЖИМ 2: ЕТИКЕТКА SKU + АДРЕСА ════ -->
+  <section class="screen" id="scr-skua" style="--mode:var(--c-skua)">
+    <h2 class="mode-title">Етикетка SKU + адреса зберігання</h2>
+    <div class="scanbox">
+      <label>Скануйте або введіть SKU</label>
+      <input id="in-skua" inputmode="none" autocomplete="off" placeholder="▮">
+    </div>
+    <div class="hint">Адреса підтягується з бази. Якщо адреси немає — спершу зробіть приймання.</div>
+    <div id="skua-card"></div>
+    <div id="skua-preview"></div>
+  </section>
+
+  <!-- ════ РЕЖИМ 3: АДРЕСНА ЕТИКЕТКА ════ -->
+  <section class="screen" id="scr-addr" style="--mode:var(--c-addr)">
+    <h2 class="mode-title">Адресна етикетка комірки</h2>
+    <div class="scanbox">
+      <label>Адреса: ПП-СС-Р (напр. 03-12-B)</label>
+      <input id="in-addr" autocomplete="off" placeholder="00-00-A" style="text-transform:uppercase">
+    </div>
+    <div class="hint">Рівні: A B C D TOP. Можна друкувати діапазоном: 03-12-A..D</div>
+    <div id="addr-preview"></div>
+  </section>
+
+  <!-- ════ РЕЖИМ 4: МАРКУВАННЯ / ПРИЙМАННЯ ════ -->
+  <section class="screen" id="scr-recv" style="--mode:var(--c-recv)">
+    <h2 class="mode-title">Маркування — наповнення комірки</h2>
+
+    <div id="recv-cell"></div>
+
+    <div class="scanbox">
+      <label id="recv-lbl">Скануйте адресу комірки</label>
+      <input id="in-recv" autocomplete="off" placeholder="▮" style="text-transform:uppercase">
+    </div>
+    <div class="hint">Адреса (ПП-СС-Р) відкриває комірку → далі скануйте SKU підряд, кожен скан зберігається сам. Скан нової адреси переключає комірку.</div>
+
+    <div id="recv-list"></div>
+
+    <button class="btn sec" id="recv-done" style="display:none">✓ Завершити комірку</button>
+    <div class="session-count">У комірці: <span id="cell-count">0</span> · за зміну: <span id="recv-count">0</span> · у черзі: <span id="pend-count">0</span></div>
+  </section>
+
+  <!-- ════ РЕЖИМ 5: ПОШУК ════ -->
+  <section class="screen" id="scr-find" style="--mode:var(--c-find)">
+    <h2 class="mode-title">Пошук — що це і де лежить</h2>
+    <div class="scanbox">
+      <label>SKU, адреса або частина назви</label>
+      <input id="in-find" autocomplete="off" placeholder="▮">
+    </div>
+    <div class="hint">Скан SKU → картка товару. Скан адреси → всі SKU в комірці.</div>
+    <div id="find-out"></div>
+  </section>
+
+  <!-- ════ НАЛАШТУВАННЯ ════ -->
+  <section class="screen" id="scr-set" style="--mode:var(--c-set)">
+    <h2 class="mode-title">Налаштування</h2>
+
+    <div class="set-group">
+      <label>URL API (Google Apps Script)</label>
+      <input id="set-api" placeholder="https://script.google.com/macros/s/.../exec">
+    </div>
+    <div class="set-group">
+      <label>Спосіб друку</label>
+      <select id="set-print">
+        <option value="rawbt">RawBT — ESC/POS ESC*33 (рекомендовано)</option>
+        <option value="rawbt-cpcl">RawBT — CPCL растр (рідний Citizen)</option>
+        <option value="rawbt-zpl">RawBT — ZPL (драйвер RawBT = «сирий»)</option>
+        <option value="zpl-share">ZPL — показати / поділитися текстом</option>
+        <option value="sys">Системний друк Android (діалог)</option>
+      </select>
+    </div>
+    <div class="row2">
+      <div class="set-group">
+        <label>Копій за раз</label>
+        <input id="set-copies" type="number" min="1" max="50" value="1">
+      </div>
+      <div class="set-group">
+        <label>Оператор</label>
+        <input id="set-op" placeholder="Ім'я">
+      </div>
+    </div>
+
+    <button class="btn" id="set-save">Зберегти налаштування</button>
+    <button class="btn sec" id="set-sync">⟳ Оновити базу SKU</button>
+    <button class="btn sec" id="set-test">Тест друку</button>
+    <button class="btn sec" id="set-retry">Відправити чергу офлайн <span class="pill" id="pend-count2">0</span></button>
+    <div class="hint" style="margin-top:10px">
+      Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
+      Сканер ТСД: режим Fill in EditText + суфікс Enter.
+    </div>
+    <div id="zpl-box" style="display:none">
+      <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
+      <textarea class="zpl-out" id="zpl-text" readonly></textarea>
+      <button class="btn sec" id="zpl-copy">Копіювати ZPL</button>
+    </div>
+  </section>
+
+</main>
+
+<nav>
+  <button data-scr="sku"  class="t-sku on"><span class="ic">⛓</span><span class="lb">SKU</span></button>
+  <button data-scr="skua" class="t-skua"><span class="ic">⛓+</span><span class="lb">SKU+АДР</span></button>
+  <button data-scr="addr" class="t-addr"><span class="ic">▦</span><span class="lb">АДРЕСА</span></button>
+  <button data-scr="recv" class="t-recv"><span class="ic">⬇</span><span class="lb">ПРИЙОМ</span></button>
+  <button data-scr="find" class="t-find"><span class="ic">⌕</span><span class="lb">ПОШУК</span></button>
+  <button data-scr="set"  class="t-set"><span class="ic">⚙</span><span class="lb">НАЛАШТ</span></button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   ТСД РЦ-1 · сканування SKU + друк етикеток 100×100 мм
+   Принтер: Citizen CMP-40L (Bluetooth) через RawBT / ZPL
+   База: Google Sheets через Apps Script API
+   ═══════════════════════════════════════════════════════════ */
+
+const DPMM = 8;                 // 203 dpi ≈ 8 точок/мм
+const LBL  = 100 * DPMM;        // 800×800 px
+
+const ADDR_RX = /^\d{2}-\d{2}-(A|B|C|D|TOP)$/i;
+const ADDR_RANGE_RX = /^(\d{2})-(\d{2})-([A-D])\.\.([A-D]|TOP)$/i;
+const LEVELS = ['A','B','C','D','TOP'];
+
+/* ── стан ── */
+let S = JSON.parse(localStorage.getItem('tsd_set') || '{}');
+S = Object.assign({api:'', print:'rawbt', copies:1, op:''}, S);
+let BASE = JSON.parse(localStorage.getItem('tsd_base') || '[]');   // [{sku,name,brand,addr}]
+let PEND = JSON.parse(localStorage.getItem('tsd_pend') || '[]');   // офлайн-черга приймання
+let lastZpl = '';
+
+const $ = id => document.getElementById(id);
+const idx = () => { const m = new Map(); BASE.forEach(r => m.set(String(r.sku).trim(), r)); return m; };
+let IDX = idx();
+
+/* ── тости ── */
+let toastT;
+function toast(msg, cls=''){
+  const t = $('toast'); t.textContent = msg; t.className = 'show ' + cls;
+  clearTimeout(toastT); toastT = setTimeout(()=> t.className = '', 2200);
+}
+
+/* ── навігація ── */
+const MODE_COLOR = {sku:'#1f6fd6', skua:'#0e8f86', addr:'#d97a16', recv:'#2e9447', find:'#7a4fd0', set:'#5a6572'};
+function go(scr){
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-'+scr));
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.scr === scr));
+  $('modeBar').style.background = MODE_COLOR[scr];
+  const f = {sku:'in-sku', skua:'in-skua', addr:'in-addr', recv:'in-recv', find:'in-find'}[scr];
+  if (f) setTimeout(()=> $(f).focus(), 60);
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => go(b.dataset.scr));
+
+/* ═══ МАЛЮВАННЯ ЕТИКЕТОК (canvas 800×800) ═══ */
+
+function newLabel(){
+  const c = document.createElement('canvas');
+  c.width = LBL; c.height = LBL;
+  const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0,0,LBL,LBL);
+  x.fillStyle = '#000';
+  return [c,x];
+}
+function barcode(value, w, h){
+  const c = document.createElement('canvas');
+  try{
+    JsBarcode(c, String(value), {format:'CODE128', width:3, height:h, displayValue:false, margin:0});
+  }catch(e){ return null; }
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const x = out.getContext('2d'); x.imageSmoothingEnabled = false;
+  x.fillStyle='#fff'; x.fillRect(0,0,w,h);
+  const bw = Math.min(w, c.width);
+  x.drawImage(c, (w-bw)/2, 0, bw, h);
+  return out;
+}
+function wrap(x, text, maxW, font){
+  x.font = font;
+  const words = String(text).split(/\s+/); const lines = []; let cur = '';
+  for (const w of words){
+    const t = cur ? cur+' '+w : w;
+    if (x.measureText(t).width > maxW && cur){ lines.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function footer(x){
+  x.font = '24px monospace'; x.fillStyle = '#000'; x.textAlign = 'left';
+  const d = new Date();
+  const ds = String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
+  x.fillText('РЦ-1 · ' + ds, 30, LBL-26);
+  x.textAlign = 'right'; x.fillText(S.op || '', LBL-30, LBL-26); x.textAlign = 'left';
+}
+
+/* Етикетка SKU: ШК + назва */
+function drawSku(rec){
+  const [c,x] = newLabel();
+  x.textAlign='center'; x.font='bold 36px sans-serif';
+  if (rec.brand) x.fillText(String(rec.brand).toUpperCase(), LBL/2, 52);
+  const bc = barcode(rec.sku, 720, 230);
+  if (bc) x.drawImage(bc, 40, 75);
+  x.font='bold 46px monospace'; x.fillText(rec.sku, LBL/2, 365);
+  x.font='bold 52px sans-serif';
+  const lines = wrap(x, rec.name || '—', 740, 'bold 52px sans-serif');
+  lines.slice(0,5).forEach((l,i)=> x.fillText(l, LBL/2, 450 + i*64));
+  x.textAlign='left'; footer(x);
+  return c;
+}
+
+/* Етикетка SKU + адреса */
+function drawSkuAddr(rec){
+  const [c,x] = newLabel();
+  const bc = barcode(rec.sku, 680, 160);
+  if (bc) x.drawImage(bc, 60, 30);
+  x.textAlign='center'; x.font='bold 40px monospace'; x.fillText(rec.sku, LBL/2, 235);
+  x.font='bold 44px sans-serif';
+  const lines = wrap(x, rec.name || '—', 740, 'bold 44px sans-serif');
+  lines.slice(0,2).forEach((l,i)=> x.fillText(l, LBL/2, 300 + i*54));
+  // роздільник
+  x.fillRect(40, 425, LBL-80, 5);
+  x.font='bold 30px sans-serif'; x.fillText('МІСЦЕ ЗБЕРІГАННЯ', LBL/2, 478);
+  x.font='900 150px sans-serif'; x.fillText(rec.addr || '??-??-?', LBL/2, 615);
+  const ab = rec.addr ? barcode(rec.addr, 440, 90) : null;
+  if (ab) x.drawImage(ab, (LBL-440)/2, 650);
+  x.textAlign='left'; footer(x);
+  return c;
+}
+
+/* Адресна етикетка комірки */
+function drawAddr(addr){
+  const [c,x] = newLabel();
+  const [pp,ss,lvl] = addr.split('-');
+  x.textAlign='center';
+  x.font='bold 38px sans-serif';
+  x.fillText('РЯД '+pp+'  ·  СЕКЦІЯ '+ss+'  ·  РІВЕНЬ '+lvl, LBL/2, 70);
+  x.fillRect(40, 95, LBL-80, 5);
+  x.font='900 235px sans-serif';
+  x.fillText(addr, LBL/2, 370);
+  const ab = barcode(addr, 620, 190);
+  if (ab) x.drawImage(ab, (LBL-620)/2, 440);
+  x.font='bold 40px monospace'; x.fillText(addr, LBL/2, 690);
+  x.textAlign='left'; footer(x);
+  return c;
+}
+
+/* ═══ ДРУК ═══ */
+
+/* canvas → монохромний бітмап (1 біт/піксель, MSB) */
+function toMono(c){
+  const x = c.getContext('2d');
+  const img = x.getImageData(0,0,c.width,c.height).data;
+  const bpr = Math.ceil(c.width/8);
+  const buf = new Uint8Array(bpr * c.height);
+  for (let y=0; y<c.height; y++)
+    for (let px=0; px<c.width; px++){
+      const i = (y*c.width+px)*4;
+      const lum = .299*img[i] + .587*img[i+1] + .114*img[i+2];
+      if (img[i+3] > 128 && lum < 160) buf[y*bpr + (px>>3)] |= (0x80 >> (px&7));
+    }
+  return {buf, bpr, h:c.height};
+}
+
+/* ESC/POS: ESC * 33 (24-dot bit image) — CMP-40 не виконує GS v 0, тому колонковий ESC * */
+function toEscpos(c, copies){
+  const {buf, bpr, h} = toMono(c);
+  const W = c.width;
+  const bit = (px,y) => (y<h && px<W) ? ((buf[y*bpr + (px>>3)] >> (7-(px&7))) & 1) : 0;
+  const out = [0x1B,0x40];                 // ESC @  ініціалізація
+  const nL = W & 0xFF, nH = (W>>8) & 0xFF;
+  for (let k=0; k<copies; k++){
+    out.push(0x1B,0x33,24);                // ESC 3 24  міжрядковий інтервал = 24 точки
+    for (let y0=0; y0<h; y0+=24){
+      out.push(0x1B,0x2A,33, nL,nH);       // ESC * 33 nL nH  смуга 24 точки
+      for (let px=0; px<W; px++){
+        let b0=0,b1=0,b2=0;
+        for (let d=0; d<8; d++){
+          if (bit(px,y0+d))    b0 |= (0x80>>d);
+          if (bit(px,y0+8+d))  b1 |= (0x80>>d);
+          if (bit(px,y0+16+d)) b2 |= (0x80>>d);
+        }
+        out.push(b0,b1,b2);
+      }
+      out.push(0x0A);                       // LF  перехід на наступну смугу
+    }
+    out.push(0x1B,0x32);                    // ESC 2  скинути інтервал
+    out.push(0x0C);                         // FF  наступна етикетка
+  }
+  return new Uint8Array(out);
+}
+
+/* ZPL: ^GFA з того ж бітмапа, зі стисненням (',' — нулі до кінця рядка, ':' — повтор рядка) */
+function toZpl(c, copies){
+  const {buf, bpr, h} = toMono(c);
+  const parts = []; let prev = null;
+  for (let y=0; y<h; y++){
+    let hex = '';
+    for (let i=y*bpr; i<(y+1)*bpr; i++) hex += buf[i].toString(16).padStart(2,'0').toUpperCase();
+    const trimmed = hex.replace(/(00)+$/, '');
+    const line = trimmed.length === 0 ? ','
+               : (trimmed.length < hex.length ? trimmed + ',' : trimmed);
+    parts.push(line === prev ? ':' : line);
+    prev = line;
+  }
+  const n = bpr * h;
+  return `^XA^PW${c.width}^LL${c.height}^LH0,0^FO0,0^GFA,${n},${n},${bpr},${parts.join('')}^FS^PQ${copies}^XZ`;
+}
+
+/* CPCL: рідна графіка CG (Compressed=бінарна) смугами — удвічі менший payload, ніж EG(hex) */
+function toCpcl(c, copies){
+  const {buf, bpr, h} = toMono(c);
+  const A = s => new TextEncoder().encode(s);   // ASCII-частини команди
+  const out = [];
+  const push = u => { for (let i=0;i<u.length;i++) out.push(u[i]); };
+  push(A(`! 0 200 200 ${h} ${copies}\r\n`));
+  push(A(`PW ${c.width}\r\n`));
+  const BAND = 192;                              // рядків на смугу
+  for (let y0=0; y0<h; y0+=BAND){
+    const rows = Math.min(BAND, h - y0);
+    push(A(`CG ${bpr} ${rows} 0 ${y0} `));       // заголовок CG
+    for (let i=y0*bpr; i<(y0+rows)*bpr; i++) out.push(buf[i]);  // бінарні байти
+    push(A(`\r\n`));
+  }
+  push(A(`PRINT\r\n`));
+  return new Uint8Array(out);
+}
+
+function b64(bytes){
+  let s = '';
+  for (let i=0; i<bytes.length; i+=8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i+8192));
+  return btoa(s);
+}
+
+/* MAC принтера CMP-40 (для нативного BT в APK) */
+const PRINTER_MAC = '00:13:7B:5E:81:A0';
+
+/* native BT (Capacitor + cordova-plugin-bluetooth-serial): шле байти ПОРЦІЯМИ з паузами, як MDemo */
+function nativeBtAvailable(){ return !!(window.Capacitor && window.bluetoothSerial); }
+function sendNative(bytes){
+  const bs = window.bluetoothSerial, CHUNK = 1024, DELAY = 30;
+  const writeChunks = ()=>{
+    let i = 0;
+    (function next(){
+      if (i >= bytes.length){ toast('Надруковано ✓','ok'); return; }
+      const part = bytes.slice(i, i+CHUNK); i += CHUNK;
+      bs.write(part.buffer || part, ()=> setTimeout(next, DELAY),
+               e=> toast('BT write: '+e,'err'));
+    })();
+  };
+  bs.isConnected(writeChunks, ()=>
+    bs.connect(PRINTER_MAC, ()=> setTimeout(writeChunks, 400),
+               e=> toast('BT connect: '+e,'err')));
+}
+
+/* транспорт: в APK → нативний BT (порціями); у браузері → RawBT-intent (для відладки UI) */
+function sendRaw(bytes){
+  if (nativeBtAvailable()) { sendNative(bytes); return; }
+  const s = b64(bytes);
+  if (/android/i.test(navigator.userAgent))
+    location.href = 'intent:base64,' + s + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
+  else
+    location.href = 'rawbt:base64,' + s;
+}
+
+function printLabel(canvas){
+  const copies = Math.max(1, parseInt(S.copies)||1);
+  try{
+    if (S.print === 'rawbt-cpcl'){
+      sendRaw(toCpcl(canvas, copies));
+      toast('CPCL(CG) → RawBT', 'ok');
+    } else if (S.print === 'rawbt'){
+      sendRaw(toEscpos(canvas, copies));
+      toast('ESC*33 → RawBT', 'ok');
+    } else if (S.print === 'rawbt-zpl'){
+      lastZpl = toZpl(canvas, copies);
+      sendRaw(new TextEncoder().encode(lastZpl));
+      toast('ZPL відправлено → RawBT', 'ok');
+    } else if (S.print === 'zpl-share'){
+      lastZpl = toZpl(canvas, copies);
+      $('zpl-box').style.display = 'block'; $('zpl-text').value = lastZpl;
+      if (navigator.share) navigator.share({text:lastZpl}).catch(()=>{});
+      go('set'); toast('ZPL згенеровано — внизу налаштувань');
+    } else {
+      const w = window.open('','_blank');
+      w.document.write('<html><head><style>@page{size:100mm 100mm;margin:0}body{margin:0}img{width:100mm;height:100mm}</style></head><body>'
+        + `<img src="${canvas.toDataURL('image/png')}" onload="window.print();setTimeout(()=>window.close(),400)">` + '</body></html>');
+      w.document.close();
+    }
+  }catch(e){ toast('Помилка друку: '+e.message, 'err'); }
+}
+
+/* блок превью + кнопка друку */
+function previewBlock(container, canvas, caption){
+  const el = $(container); el.innerHTML = '';
+  const pv = document.createElement('div'); pv.className = 'preview';
+  pv.appendChild(canvas);
+  const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = caption + ' · 100×100 мм';
+  pv.appendChild(cap);
+  el.appendChild(pv);
+  const btn = document.createElement('button'); btn.className = 'btn'; btn.textContent = '🖨 ДРУК ' + (S.copies>1 ? '×'+S.copies : '');
+  btn.onclick = () => printLabel(canvas);
+  el.appendChild(btn);
+}
+
+/* ═══ ЛОГІКА РЕЖИМІВ ═══ */
+
+function findRec(code){ return IDX.get(String(code).trim()) || null; }
+
+function cardHtml(rec){
+  return `<div class="card"><div class="nm">${esc(rec.name||'—')}</div>
+    <div class="meta">SKU <b>${esc(rec.sku)}</b>${rec.brand ? ' · '+esc(rec.brand) : ''}</div>
+    ${rec.addr ? `<div class="addr-big">${esc(rec.addr)}</div>` : '<div class="meta" style="margin-top:6px">адресу не призначено</div>'}
+    </div>`;
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+function notFound(code){
+  return `<div class="nf">SKU «${esc(code)}» не знайдено в базі.<br>
+    <span style="font-weight:400;font-size:13px">Перевірте код або оновіть базу в налаштуваннях.</span></div>`;
+}
+
+/* — Режим 1: етикетка SKU — */
+$('in-sku').addEventListener('keydown', e=>{
+  if (e.key !== 'Enter') return;
+  const code = e.target.value.trim(); e.target.value = '';
+  if (!code) return;
+  const rec = findRec(code);
+  if (!rec){ $('sku-card').innerHTML = notFound(code); $('sku-preview').innerHTML=''; return; }
+  $('sku-card').innerHTML = cardHtml(rec);
+  previewBlock('sku-preview', drawSku(rec), 'Етикетка SKU');
+});
+
+/* — Режим 2: етикетка SKU + адреса — */
+$('in-skua').addEventListener('keydown', e=>{
+  if (e.key !== 'Enter') return;
+  const code = e.target.value.trim(); e.target.value = '';
+  if (!code) return;
+  const rec = findRec(code);
+  if (!rec){ $('skua-card').innerHTML = notFound(code); $('skua-preview').innerHTML=''; return; }
+  $('skua-card').innerHTML = cardHtml(rec);
+  previewBlock('skua-preview', drawSkuAddr(rec), 'Етикетка SKU + адреса');
+});
+
+/* — Режим 3: адресна етикетка (одиночна або діапазон рівнів) — */
+$('in-addr').addEventListener('keydown', e=>{
+  if (e.key !== 'Enter') return;
+  const raw = e.target.value.trim().toUpperCase();
+  if (!raw) return;
+  const el = $('addr-preview'); el.innerHTML = '';
+  let list = [];
+  const mr = raw.match(ADDR_RANGE_RX);
+  if (mr){
+    const i1 = LEVELS.indexOf(mr[3]), i2 = LEVELS.indexOf(mr[4]);
+    for (let i=Math.min(i1,i2); i<=Math.max(i1,i2); i++) list.push(`${mr[1]}-${mr[2]}-${LEVELS[i]}`);
+  } else if (ADDR_RX.test(raw)) list = [raw];
+  else { el.innerHTML = `<div class="nf">Невірний формат адреси «${esc(raw)}».<br><span style="font-weight:400;font-size:13px">Очікується ПП-СС-Р, напр. 03-12-B або 03-12-A..D</span></div>`; return; }
+
+  if (list.length === 1){
+    previewBlock('addr-preview', drawAddr(list[0]), 'Адресна етикетка');
+  } else {
+    const pv = document.createElement('div'); pv.className='card';
+    pv.innerHTML = `<div class="nm">Діапазон: ${list.length} етикеток</div><div class="meta">${list.join(' · ')}</div>`;
+    el.appendChild(pv);
+    const btn = document.createElement('button'); btn.className='btn';
+    btn.textContent = `🖨 ДРУК ВСІХ (${list.length})`;
+    btn.onclick = ()=> list.forEach((a,i)=> setTimeout(()=> printLabel(drawAddr(a)), i*900));
+    el.appendChild(btn);
+  }
+});
+
+/* — Режим 4: маркування комірки — */
+let CELL = null;        // активна адреса
+let cellSkus = [];      // скани поточної комірки (нові зверху)
+let recvCount = 0;      // за зміну
+let OUT = PEND;         // вихідна черга (та сама, що офлайн)
+
+function recvRenderCell(){
+  const el = $('recv-cell');
+  if (!CELL){
+    el.innerHTML = `<div class="cell-empty">Комірку не відкрито<br>
+      <span style="font-weight:400;font-size:13px">скануйте адресну етикетку або введіть ПП-СС-Р</span></div>`;
+    $('recv-lbl').textContent = 'Скануйте адресу комірки';
+    $('recv-done').style.display = 'none';
+  } else {
+    el.innerHTML = `<div class="cell-card"><div>
+        <div class="cl">Активна комірка</div><div class="ca">${esc(CELL)}</div></div></div>`;
+    $('recv-lbl').textContent = 'Скануйте SKU (підряд)';
+    $('recv-done').style.display = 'block';
+  }
+  $('cell-count').textContent = cellSkus.length;
+  $('recv-count').textContent = recvCount;
+  updatePend();
+}
+function recvRenderList(){
+  $('recv-list').innerHTML = cellSkus.slice(0, 30).map(s =>
+    `<div class="scan-item"><div class="si-sku">${esc(s.sku)}</div>
+      <div class="si-nm">${esc(s.name || 'без назви — заповніть у таблиці')}</div>
+      ${s.isNew ? '<span class="badge new">НОВИЙ</span>' : ''}
+      ${s.moved ? `<span class="badge mov">з ${esc(s.moved)}</span>` : ''}</div>`).join('');
+}
+
+$('in-recv').addEventListener('keydown', e=>{
+  if (e.key !== 'Enter') return;
+  const raw = e.target.value.trim(); e.target.value = '';
+  if (!raw) return;
+  const up = raw.toUpperCase();
+
+  if (ADDR_RX.test(up)){                       /* скан адреси → відкрити/змінити комірку */
+    CELL = up; cellSkus = [];
+    recvRenderCell(); recvRenderList();
+    toast('Комірка ' + up + ' відкрита', 'ok');
+    return;
+  }
+  if (!CELL){ toast('Спершу скануйте адресу комірки', 'err'); return; }
+
+  /* скан SKU → миттєва прив'язка */
+  const sku = raw;
+  let rec = IDX.get(sku);
+  if (rec && String(rec.addr).toUpperCase() === CELL){
+    toast('Вже у цій комірці', 'err'); return;
+  }
+  const isNew = !rec;
+  const moved = rec && rec.addr ? rec.addr : null;
+  if (isNew){
+    rec = {sku: sku, name:'', brand:'', addr: CELL};
+    BASE.push(rec); IDX.set(sku, rec);
+  } else rec.addr = CELL;
+  localStorage.setItem('tsd_base', JSON.stringify(BASE));
+
+  OUT.push({sku: sku, addr: CELL, op: S.op, ts: new Date().toISOString()});
+  localStorage.setItem('tsd_pend', JSON.stringify(OUT));
+
+  cellSkus.unshift({sku, name: rec.name, isNew, moved});
+  recvCount++;
+  recvRenderCell(); recvRenderList(); refreshStatus();
+  scheduleFlush();
+});
+
+$('recv-done').onclick = ()=>{
+  toast(`Комірка ${CELL}: ${cellSkus.length} SKU ✓`, 'ok');
+  CELL = null; cellSkus = [];
+  recvRenderCell(); recvRenderList();
+  flushOutbox();
+  $('in-recv').focus();
+};
+
+/* ── відправка черги батчами ── */
+let flushing = false, flushT = null;
+function scheduleFlush(){ clearTimeout(flushT); flushT = setTimeout(flushOutbox, 1800); }
+function updatePend(){
+  $('pend-count').textContent = OUT.length;
+  $('pend-count2').textContent = OUT.length;
+}
+async function flushOutbox(){
+  if (flushing || !OUT.length || !S.api) { updatePend(); return; }
+  flushing = true;
+  try{
+    while (OUT.length){
+      const batch = OUT.slice(0, 50);
+      const r = await fetch(S.api, {method:'POST', headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({action:'bind_batch', items: batch})});
+      const j = await r.json();
+      if (!j || !j.ok) break;
+      OUT.splice(0, batch.length);
+      localStorage.setItem('tsd_pend', JSON.stringify(OUT));
+      updatePend();
+    }
+  }catch(e){ /* немає мережі — лишається в черзі */ }
+  flushing = false; updatePend();
+}
+async function retryPend(){
+  if (!OUT.length){ toast('Черга порожня'); return; }
+  const before = OUT.length;
+  await flushOutbox();
+  const sent = before - OUT.length;
+  toast(sent ? `Відправлено ${sent}, лишилось ${OUT.length}` : 'Сервер недоступний', sent ? 'ok' : 'err');
+}
+
+/* — Режим 5: пошук — */
+$('in-find').addEventListener('keydown', e=>{
+  if (e.key !== 'Enter') return;
+  const q = e.target.value.trim(); e.target.value = '';
+  if (!q) return;
+  const out = $('find-out'); out.innerHTML = '';
+  const Q = q.toUpperCase();
+
+  if (ADDR_RX.test(Q)){                       /* пошук за адресою */
+    const hits = BASE.filter(r => String(r.addr||'').toUpperCase() === Q);
+    out.innerHTML = `<div class="card"><div class="meta">Комірка</div><div class="addr-big">${esc(Q)}</div>
+      <div class="meta">${hits.length} SKU у комірці</div></div>`
+      + (hits.length ? hits.map(resHtml).join('') : '<div class="hint">Комірка порожня (за базою)</div>');
+    return;
+  }
+  const rec = findRec(q);                     /* точний SKU */
+  if (rec){
+    out.innerHTML = cardHtml(rec);
+    const b1 = document.createElement('button'); b1.className='btn'; b1.textContent='🖨 Етикетка SKU';
+    b1.onclick = ()=> printLabel(drawSku(rec));
+    const b2 = document.createElement('button'); b2.className='btn sec'; b2.textContent='🖨 Етикетка SKU + адреса';
+    b2.onclick = ()=> printLabel(drawSkuAddr(rec));
+    out.appendChild(b1); out.appendChild(b2);
+    return;
+  }
+  const ql = q.toLowerCase();                 /* пошук за назвою */
+  const hits = BASE.filter(r => String(r.name||'').toLowerCase().includes(ql)
+                             || String(r.sku||'').toLowerCase().includes(ql)).slice(0,20);
+  out.innerHTML = hits.length ? hits.map(resHtml).join('')
+    : `<div class="nf">Нічого не знайдено за запитом «${esc(q)}»</div>`;
+  out.querySelectorAll('.res').forEach(el => el.onclick = ()=>{
+    $('in-find').value = el.dataset.sku;
+    $('in-find').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));
+  });
+});
+function resHtml(r){
+  return `<div class="res" data-sku="${esc(r.sku)}"><div class="rn">${esc(r.name||'—')}</div>
+    <div class="rm">${esc(r.sku)}${r.brand?' · '+esc(r.brand):''} · <span class="ra">${esc(r.addr||'без адреси')}</span></div></div>`;
+}
+
+/* ═══ СИНХРОНІЗАЦІЯ БАЗИ ═══ */
+async function syncBase(){
+  if (!S.api){ toast('Вкажіть URL API в налаштуваннях', 'err'); return; }
+  toast('Завантаження бази…');
+  try{
+    const r = await fetch(S.api + (S.api.includes('?') ? '&' : '?') + 'action=all');
+    const j = await r.json();
+    if (!Array.isArray(j.rows)) throw new Error('невірний формат відповіді');
+    BASE = j.rows; IDX = idx();
+    localStorage.setItem('tsd_base', JSON.stringify(BASE));
+    localStorage.setItem('tsd_sync', new Date().toISOString());
+    refreshStatus();
+    toast(`База оновлена: ${BASE.length} SKU`, 'ok');
+  }catch(e){ toast('Помилка завантаження: '+e.message, 'err'); }
+}
+function refreshStatus(){
+  $('baseCount').textContent = BASE.length;
+  const t = localStorage.getItem('tsd_sync');
+  $('syncTime').textContent = t ? 'синх. ' + new Date(t).toLocaleString('uk-UA',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'база не завантажена';
+}
+
+/* ═══ НАЛАШТУВАННЯ ═══ */
+function loadSet(){
+  $('set-api').value = S.api; $('set-print').value = S.print;
+  $('set-copies').value = S.copies; $('set-op').value = S.op;
+}
+$('set-save').onclick = ()=>{
+  S.api = $('set-api').value.trim(); S.print = $('set-print').value;
+  S.copies = parseInt($('set-copies').value)||1; S.op = $('set-op').value.trim();
+  localStorage.setItem('tsd_set', JSON.stringify(S));
+  toast('Налаштування збережено', 'ok');
+};
+$('set-sync').onclick = syncBase;
+$('set-retry').onclick = retryPend;
+$('set-test').onclick = ()=>{
+  const [c,x] = newLabel();
+  x.textAlign='center'; x.font='900 120px sans-serif'; x.fillText('ТЕСТ', LBL/2, 200);
+  const bc = barcode('TEST-0001', 600, 180); if (bc) x.drawImage(bc, 100, 260);
+  x.font='bold 44px monospace'; x.fillText('TEST-0001', LBL/2, 510);
+  x.font='32px sans-serif'; x.fillText('РЦ-1 · Citizen CMP · 100×100 мм', LBL/2, 590);
+  x.fillRect(20,20,LBL-40,6); x.fillRect(20,LBL-26,LBL-40,6);
+  x.fillRect(20,20,6,LBL-40); x.fillRect(LBL-26,20,6,LBL-40);
+  printLabel(c);
+};
+$('zpl-copy').onclick = ()=>{
+  $('zpl-text').select(); document.execCommand('copy'); toast('ZPL скопійовано','ok');
+};
+
+/* ═══ СТАРТ ═══ */
+loadSet(); refreshStatus(); recvRenderCell(); flushOutbox(); go('sku');
+</script>
+</body>
+</html>
