@@ -242,7 +242,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.9 · 2026-06-17</b> · фінал: рідний CPCL + вузькі EG-підписи (укр.)
+      <b style="color:var(--c-sku)">Збірка: v3.0 · 2026-06-17</b> · стабільний CPCL-друк (без растру; підписи транслітом)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -540,70 +540,58 @@ function magFit(text, maxW, cap){
 }
 function addrParts(addr){ const p = clean(addr).split('-'); return [p[0]||'', p[1]||'', p[2]||'']; }
 
-/* EG-смужка з УКРАЇНСЬКИМ текстом — ВУЗЬКА, по ширині самого тексту (≈1 КБ), щоб НЕ зависав принтер.
-   Велика повноширока EG переповнює буфер CMP-40 → зависання. invert=true → білий текст на чорному «чіпі».
-   Картинка центрується на етикетці (x=(LBL-ширина)/2). Повертає CPCL-команду EG. */
-function egStrip(text, yPos, fontPx, invert){
-  const meas = document.createElement('canvas').getContext('2d');
-  meas.font = 'bold '+fontPx+'px sans-serif';
-  const tw = Math.ceil(meas.measureText(text).width);
-  const padX = invert ? 22 : 6;
-  let w = tw + padX*2; w = Math.min(LBL, Math.ceil(w/8)*8);   // ширина кратна 8, не більша за етикетку
-  const h = Math.round(fontPx*1.4);
-  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-  const cx = cv.getContext('2d');
-  cx.fillStyle = invert?'#000':'#fff'; cx.fillRect(0,0,w,h);
-  cx.fillStyle = invert?'#fff':'#000';
-  cx.textAlign='center'; cx.textBaseline='middle';
-  cx.font='bold '+fontPx+'px sans-serif';
-  cx.fillText(text, w/2, h/2+1);
-  const {buf,bpr,h:hh} = toMono(cv);
-  let hex=''; for(let i=0;i<buf.length;i++) hex += buf[i].toString(16).padStart(2,'0').toUpperCase();
-  const x = Math.max(0, Math.floor((LBL - bpr*8)/2));   // центруємо вузьку картинку
-  return 'EG '+bpr+' '+hh+' '+x+' '+yPos+' '+hex;
+/* інверс-заголовок зони: білий текст на чорній смузі (рідний CPCL, без растру → не зависає) */
+function cpclHdr(title, yTop, h){
+  const mid = yTop + Math.floor(h/2);
+  return ['SETMAG 2 2', 'TEXT 7 0 0 '+(yTop+8)+' '+title, 'SETMAG 0 0',
+          'INVERSE-LINE 16 '+mid+' 784 '+mid+' '+h];
 }
 
-/* ЕТИКЕТКА КОМІРКИ (полиця): «МІСЦЕ ЗБЕРІГАННЯ» (EG), Ряд/Стелаж/Полка (EG), ВЕЛИКА адреса+ШК (рідний CPCL) */
+/* ЕТИКЕТКА КОМІРКИ (полиця): зона MISCE, RYAD/STELAZH/POLKA, ВЕЛИКА адреса + ШК — все рідним CPCL */
 function cpclAddr(addr){
   addr = clean(addr); const [pp,ss,lvl] = addrParts(addr);
   const m = magFit(addr, 700, 7);
-  return ['! 0 200 200 600 '+cc(), 'PW 800', 'CENTER',
-    egStrip('МІСЦЕ', 16, 48, true),
-    egStrip('Ряд · Стелаж · Полка', 100, 30, false),
-    'SETMAG '+m+' '+m, 'TEXT 7 0 0 175 '+addr, 'SETMAG 0 0',
-    'BARCODE 128 3 3 150 0 330 '+addr,
-    'SETMAG 2 2', 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
-    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+  return ['! 0 200 200 560 '+cc(), 'PW 800', 'CENTER']
+    .concat(cpclHdr('MISCE', 25, 50))
+    .concat([
+      'SETMAG 2 2', 'TEXT 7 0 0 105 RYAD '+pp+'   STELAZH '+ss+'   POLKA '+lvl, 'SETMAG 0 0',
+      'SETMAG '+m+' '+m, 'TEXT 7 0 0 160 '+addr, 'SETMAG 0 0',
+      'BARCODE 128 3 3 150 0 310 '+addr,
+      'SETMAG 2 2', 'TEXT 7 0 0 470 '+addr, 'SETMAG 0 0',
+      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
-/* ЕТИКЕТКА SKU+АДРЕСА (товар): зона ТОВАР (вел. SKU-4 + ШК) → зона МІСЦЕ (Ряд/Стелаж/Полка + вел. адреса + ШК) */
+/* ЕТИКЕТКА SKU+АДРЕСА (товар): зона SKU (вел. SKU-4 + ШК) → зона MISCE (RYAD/STELAZH/POLKA + вел. адреса + ШК) */
 function cpclSkuAddr(rec){
   const sku = clean(rec.sku), addr = clean(rec.addr || '??-??-?');
   const sku4 = sku.slice(-4); const [pp,ss,lvl] = addrParts(addr);
   const s4 = magFit(sku4, 700, 8);    // SKU-4 — найбільший
   const am = magFit(addr, 640, 6);    // адреса — теж велика
-  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER',
-    egStrip('ТОВАР', 14, 42, true),
-    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 80 '+sku4, 'SETMAG 0 0',
-    'BARCODE 128 1 2 100 0 230 '+sku,
-    'SETMAG 1 1', 'TEXT 7 0 0 350 SKU '+sku, 'SETMAG 0 0',
-    egStrip('МІСЦЕ', 392, 42, true),
-    egStrip('Ряд · Стелаж · Полка', 452, 28, false),
-    'SETMAG '+am+' '+am, 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
-    'BARCODE 128 2 2 90 0 645 '+addr,
-    'SETMAG 1 1', 'TEXT 7 0 0 755 '+addr, 'SETMAG 0 0',
-    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER']
+    .concat(cpclHdr('SKU', 22, 46))
+    .concat([
+      'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 90 '+sku4, 'SETMAG 0 0',
+      'BARCODE 128 1 2 100 0 235 '+sku,
+      'SETMAG 1 1', 'TEXT 7 0 0 350 SKU '+sku, 'SETMAG 0 0'])
+    .concat(cpclHdr('MISCE', 392, 46))
+    .concat([
+      'SETMAG 2 2', 'TEXT 7 0 0 455 RYAD '+pp+'  STELAZH '+ss+'  POLKA '+lvl, 'SETMAG 0 0',
+      'SETMAG '+am+' '+am, 'TEXT 7 0 0 505 '+addr, 'SETMAG 0 0',
+      'BARCODE 128 2 2 90 0 640 '+addr,
+      'SETMAG 1 1', 'TEXT 7 0 0 752 '+addr, 'SETMAG 0 0',
+      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
-/* ЕТИКЕТКА ЛИШЕ SKU: зона ТОВАР (EG) + вел. SKU-4 + ШК (рідний CPCL) */
+/* ЕТИКЕТКА ЛИШЕ SKU: зона SKU, вел. SKU-4 + ШК — все рідним CPCL */
 function cpclSku(rec){
   const sku = clean(rec.sku), sku4 = sku.slice(-4); const s4 = magFit(sku4, 700, 8);
-  return ['! 0 200 200 470 '+cc(), 'PW 800', 'CENTER',
-    egStrip('ТОВАР', 16, 48, true),
-    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 100 '+sku4, 'SETMAG 0 0',
-    'BARCODE 128 1 2 120 0 255 '+sku,
-    'SETMAG 1 1', 'TEXT 7 0 0 395 SKU '+sku, 'SETMAG 0 0',
-    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+  return ['! 0 200 200 470 '+cc(), 'PW 800', 'CENTER']
+    .concat(cpclHdr('SKU', 22, 46))
+    .concat([
+      'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 95 '+sku4, 'SETMAG 0 0',
+      'BARCODE 128 1 2 120 0 250 '+sku,
+      'SETMAG 1 1', 'TEXT 7 0 0 390 SKU '+sku, 'SETMAG 0 0',
+      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
 /* CPCL EG (ASCII-hex) з canvas — кирилиця як зображення, проходить через UTF-8 плагіна */
