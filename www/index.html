@@ -240,7 +240,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v1.7 · 2026-06-17</b> · нативний CPCL-друк (bluetooth-serial)
+      <b style="color:var(--c-sku)">Збірка: v1.8 · 2026-06-17</b> · CPCL-друк (BluetoothPrinter, Cap6)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -490,23 +490,16 @@ window.addEventListener('unhandledrejection', e=>{ try{ toast('PROMISE: '+((e.re
 /* MAC принтера CMP-40 */
 const PRINTER_MAC = '00:13:7B:5E:81:A0';
 
-/* Capacitor-нативний BT (плагін bluetooth-serial) через Capacitor.Plugins */
-function btPlugin(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BluetoothSerial) || null; }
+/* Capacitor 6 BT-принтер (@kduma-autoid/capacitor-bluetooth-printer) → реєструється як BluetoothPrinter */
+function btPlugin(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BluetoothPrinter) || null; }
 function nativeBtAvailable(){ return !!btPlugin(); }
 
-/* надсилання CPCL-тексту: дозвіл → конект → запис рядка порціями */
+/* друк: підключення + друк рядка одним викликом (плагін сам тримає дозволи й конект) */
 async function btSend(str){
   const Bt = btPlugin();
   if (!Bt){ toast('BT-плагін не підвантажився','err'); return; }
   try{
-    try{ await Bt.requestPermissions({ permissions:['connect'] }); }catch(_){}
-    let conn=false; try{ const r = await Bt.isConnected(); conn = r && r.isConnected; }catch(_){}
-    if (!conn) await Bt.connect({ address: PRINTER_MAC });
-    const CHUNK=256;
-    for (let i=0;i<str.length;i+=CHUNK){
-      await Bt.write({ data: str.slice(i, i+CHUNK) });
-      await new Promise(r=>setTimeout(r,25));
-    }
+    await Bt.connectAndPrint({ address: PRINTER_MAC, data: str });
     toast('Надруковано ✓','ok');
   }catch(err){ toast('BT: '+((err&&err.message)||err),'err'); }
 }
