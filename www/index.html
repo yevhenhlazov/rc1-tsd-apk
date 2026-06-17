@@ -235,14 +235,14 @@
 
     <button class="btn" id="set-save">Зберегти налаштування</button>
     <button class="btn sec" id="set-sync">⟳ Оновити базу SKU</button>
-    <button class="btn sec" id="set-test">A: EG вузька (200pt)</button>
-    <button class="btn sec" id="set-test-eg">B: EG середня (400pt)</button>
-    <button class="btn sec" id="set-test-c">C: EG широка (800pt)</button>
+    <button class="btn sec" id="set-test">Тест: етикетка комірки</button>
+    <button class="btn sec" id="set-test-eg">Тест: SKU</button>
+    <button class="btn sec" id="set-test-c">Тест: SKU + адреса</button>
     <button class="btn sec" id="set-retry">Відправити чергу офлайн <span class="pill" id="pend-count2">0</span></button>
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.8 · 2026-06-17</b> · діагностика межі EG (A/B/C)
+      <b style="color:var(--c-sku)">Збірка: v2.9 · 2026-06-17</b> · фінал: рідний CPCL + вузькі EG-підписи (укр.)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -540,20 +540,27 @@ function magFit(text, maxW, cap){
 }
 function addrParts(addr){ const p = clean(addr).split('-'); return [p[0]||'', p[1]||'', p[2]||'']; }
 
-/* EG-смужка з УКРАЇНСЬКИМ текстом (растр лише для кирилиці; кожна смужка мала → влазить у принтер).
-   invert=true → білий текст на чорній смузі (заголовок зони). Повертає CPCL-команду EG. */
+/* EG-смужка з УКРАЇНСЬКИМ текстом — ВУЗЬКА, по ширині самого тексту (≈1 КБ), щоб НЕ зависав принтер.
+   Велика повноширока EG переповнює буфер CMP-40 → зависання. invert=true → білий текст на чорному «чіпі».
+   Картинка центрується на етикетці (x=(LBL-ширина)/2). Повертає CPCL-команду EG. */
 function egStrip(text, yPos, fontPx, invert){
-  const h = Math.round(fontPx*1.45);
-  const cv = document.createElement('canvas'); cv.width = LBL; cv.height = h;
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = 'bold '+fontPx+'px sans-serif';
+  const tw = Math.ceil(meas.measureText(text).width);
+  const padX = invert ? 22 : 6;
+  let w = tw + padX*2; w = Math.min(LBL, Math.ceil(w/8)*8);   // ширина кратна 8, не більша за етикетку
+  const h = Math.round(fontPx*1.4);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const cx = cv.getContext('2d');
-  cx.fillStyle = invert?'#000':'#fff'; cx.fillRect(0,0,LBL,h);
+  cx.fillStyle = invert?'#000':'#fff'; cx.fillRect(0,0,w,h);
   cx.fillStyle = invert?'#fff':'#000';
   cx.textAlign='center'; cx.textBaseline='middle';
   cx.font='bold '+fontPx+'px sans-serif';
-  cx.fillText(text, LBL/2, h/2+1);
+  cx.fillText(text, w/2, h/2+1);
   const {buf,bpr,h:hh} = toMono(cv);
   let hex=''; for(let i=0;i<buf.length;i++) hex += buf[i].toString(16).padStart(2,'0').toUpperCase();
-  return 'EG '+bpr+' '+hh+' 0 '+yPos+' '+hex;
+  const x = Math.max(0, Math.floor((LBL - bpr*8)/2));   // центруємо вузьку картинку
+  return 'EG '+bpr+' '+hh+' '+x+' '+yPos+' '+hex;
 }
 
 /* ЕТИКЕТКА КОМІРКИ (полиця): «МІСЦЕ ЗБЕРІГАННЯ» (EG), Ряд/Стелаж/Полка (EG), ВЕЛИКА адреса+ШК (рідний CPCL) */
@@ -561,9 +568,9 @@ function cpclAddr(addr){
   addr = clean(addr); const [pp,ss,lvl] = addrParts(addr);
   const m = magFit(addr, 700, 7);
   return ['! 0 200 200 600 '+cc(), 'PW 800', 'CENTER',
-    egStrip('МІСЦЕ ЗБЕРІГАННЯ', 16, 48, true),
-    egStrip('Ряд '+pp+'    Стелаж '+ss+'    Полка '+lvl, 110, 40, false),
-    'SETMAG '+m+' '+m, 'TEXT 7 0 0 185 '+addr, 'SETMAG 0 0',
+    egStrip('МІСЦЕ', 16, 48, true),
+    egStrip('Ряд · Стелаж · Полка', 100, 30, false),
+    'SETMAG '+m+' '+m, 'TEXT 7 0 0 175 '+addr, 'SETMAG 0 0',
     'BARCODE 128 3 3 150 0 330 '+addr,
     'SETMAG 2 2', 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
     'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
@@ -580,8 +587,8 @@ function cpclSkuAddr(rec){
     'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 80 '+sku4, 'SETMAG 0 0',
     'BARCODE 128 1 2 100 0 230 '+sku,
     'SETMAG 1 1', 'TEXT 7 0 0 350 SKU '+sku, 'SETMAG 0 0',
-    egStrip('МІСЦЕ ЗБЕРІГАННЯ', 392, 42, true),
-    egStrip('Ряд '+pp+'   Стелаж '+ss+'   Полка '+lvl, 455, 34, false),
+    egStrip('МІСЦЕ', 392, 42, true),
+    egStrip('Ряд · Стелаж · Полка', 452, 28, false),
     'SETMAG '+am+' '+am, 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
     'BARCODE 128 2 2 90 0 645 '+addr,
     'SETMAG 1 1', 'TEXT 7 0 0 755 '+addr, 'SETMAG 0 0',
@@ -909,24 +916,10 @@ $('set-save').onclick = ()=>{
 };
 $('set-sync').onclick = syncBase;
 $('set-retry').onclick = retryPend;
-/* ДІАГНОСТИКА МЕЖІ EG: один чорний прямокутник заданої ширини (точок) × 50, через connectAndPrint.
-   Тиснемо A → якщо завис, вийми батарею, перезавантаж, тисни B, і т.д.
-   Так знайдемо безпечну ширину растру (підписи робитимемо вужче за неї). */
-async function egSizeTest(dots){
-  const Bt = btPlugin();
-  if (!Bt){ toast('BT-плагін не підвантажився','err'); return; }
-  const bpr = Math.ceil(dots/8), h = 50;
-  let hex=''; for(let i=0;i<bpr*h;i++) hex += 'FF';
-  const cpcl = '! 0 200 200 100 1\r\nEG '+bpr+' '+h+' 0 20 '+hex+'\r\nFORM\r\nPRINT\r\n';
-  try{
-    toast('EG '+dots+'pt ('+(bpr*h)+' Б)…','ok');
-    await Bt.connectAndPrint({ address: PRINTER_MAC, data: cpcl });
-    toast('Відправлено ✓','ok');
-  }catch(err){ toast('BT: '+((err&&err.message)||err),'err'); }
-}
-$('set-test').onclick   = ()=> egSizeTest(200);   // bpr25×50 = 1250 Б
-$('set-test-eg').onclick= ()=> egSizeTest(400);   // bpr50×50 = 2500 Б
-$('set-test-c').onclick = ()=> egSizeTest(800);   // bpr100×50 = 5000 Б
+/* Тести: друк реальних етикеток зі зразковими даними (через emit → рідний CPCL + вузькі EG) */
+$('set-test').onclick    = ()=> emit(drawAddr('03-12-B'), cpclAddr('03-12-B'));
+$('set-test-eg').onclick = ()=> emit(drawSku({sku:'482310012345'}), cpclSku({sku:'482310012345'}));
+$('set-test-c').onclick  = ()=> emit(drawSkuAddr({sku:'482310012345', addr:'03-12-B'}), cpclSkuAddr({sku:'482310012345', addr:'03-12-B'}));
 $('set-test-eg').onclick = diagEG;
 $('zpl-copy').onclick = ()=>{
   $('zpl-text').select(); document.execCommand('copy'); toast('ZPL скопійовано','ok');
