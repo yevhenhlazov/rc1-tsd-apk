@@ -240,7 +240,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v1.8 · 2026-06-17</b> · CPCL-друк (BluetoothPrinter, Cap6)
+      <b style="color:var(--c-sku)">Збірка: v1.9 · 2026-06-17</b> · CPCL етикетки (комірка, SKU+адреса)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -517,6 +517,52 @@ function cpclTest(){
   ].join('\r\n');
 }
 
+/* ── реальні етикетки в CPCL (100×100 мм = 800 dots, ASCII) ── */
+function cc(){ return Math.max(1, parseInt(S.copies)||1); }
+function clean(s){ return String(s==null?'':s).replace(/[\r\n]+/g,' ').trim(); }
+
+/* етикетка комірки: KOMIRKA + велика адреса + штрихкод адреси */
+function cpclAddr(addr){
+  addr = clean(addr);
+  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER',
+    'TEXT 7 0 0 60 KOMIRKA',
+    'LINE 40 135 760 135 4',
+    'SETMAG 6 6', 'TEXT 7 0 0 210 '+addr, 'SETMAG 0 0',
+    'BARCODE 128 3 2 170 0 520 '+addr,
+    'TEXT 7 0 0 740 '+addr,
+    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+}
+
+/* етикетка SKU + адреса: SKU+штрихкод, велика адреса+штрихкод */
+function cpclSkuAddr(rec){
+  const sku = clean(rec.sku), addr = clean(rec.addr || '??-??-?');
+  return ['! 0 200 200 800 '+cc(), 'PW 800',
+    'TEXT 7 0 30 30 SKU '+sku,
+    'BARCODE 128 1 2 140 30 85 '+sku,
+    'LINE 30 320 770 320 4',
+    'CENTER', 'TEXT 7 0 0 350 MISCE ZBERIGANNYA',
+    'SETMAG 4 4', 'TEXT 7 0 0 400 '+addr, 'SETMAG 0 0',
+    'BARCODE 128 2 2 130 0 630 '+addr,
+    'TEXT 7 0 0 760 '+addr,
+    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+}
+
+/* етикетка лише SKU */
+function cpclSku(rec){
+  const sku = clean(rec.sku);
+  return ['! 0 200 200 600 '+cc(), 'PW 800',
+    'TEXT 7 0 30 40 SKU '+sku,
+    'BARCODE 128 1 2 190 30 100 '+sku,
+    'TEXT 7 0 30 330 '+sku,
+    'FORM', 'PRINT', ''].join('\r\n');
+}
+
+/* єдина точка: в APK → CPCL нативно; у браузері → растр (стара логіка) */
+function emit(canvas, cpcl){
+  if (nativeBtAvailable()){ btSend(cpcl); return; }
+  printLabel(canvas);
+}
+
 /* RawBT-фолбек лише для браузера (відладка UI поза APK) */
 function sendRaw(bytes){
   if (window.Capacitor){ toast('У APK друк нативний (CPCL)','err'); return; }
@@ -555,7 +601,7 @@ function printLabel(canvas){
 }
 
 /* блок превью + кнопка друку */
-function previewBlock(container, canvas, caption){
+function previewBlock(container, canvas, caption, cpcl){
   const el = $(container); el.innerHTML = '';
   const pv = document.createElement('div'); pv.className = 'preview';
   pv.appendChild(canvas);
@@ -563,7 +609,7 @@ function previewBlock(container, canvas, caption){
   pv.appendChild(cap);
   el.appendChild(pv);
   const btn = document.createElement('button'); btn.className = 'btn'; btn.textContent = '🖨 ДРУК ' + (S.copies>1 ? '×'+S.copies : '');
-  btn.onclick = () => printLabel(canvas);
+  btn.onclick = () => emit(canvas, cpcl);
   el.appendChild(btn);
 }
 
@@ -591,7 +637,7 @@ $('in-sku').addEventListener('keydown', e=>{
   const rec = findRec(code);
   if (!rec){ $('sku-card').innerHTML = notFound(code); $('sku-preview').innerHTML=''; return; }
   $('sku-card').innerHTML = cardHtml(rec);
-  previewBlock('sku-preview', drawSku(rec), 'Етикетка SKU');
+  previewBlock('sku-preview', drawSku(rec), 'Етикетка SKU', cpclSku(rec));
 });
 
 /* — Режим 2: етикетка SKU + адреса — */
@@ -602,7 +648,7 @@ $('in-skua').addEventListener('keydown', e=>{
   const rec = findRec(code);
   if (!rec){ $('skua-card').innerHTML = notFound(code); $('skua-preview').innerHTML=''; return; }
   $('skua-card').innerHTML = cardHtml(rec);
-  previewBlock('skua-preview', drawSkuAddr(rec), 'Етикетка SKU + адреса');
+  previewBlock('skua-preview', drawSkuAddr(rec), 'Етикетка SKU + адреса', cpclSkuAddr(rec));
 });
 
 /* — Режим 3: адресна етикетка (одиночна або діапазон рівнів) — */
@@ -620,14 +666,14 @@ $('in-addr').addEventListener('keydown', e=>{
   else { el.innerHTML = `<div class="nf">Невірний формат адреси «${esc(raw)}».<br><span style="font-weight:400;font-size:13px">Очікується ПП-СС-Р, напр. 03-12-B або 03-12-A..D</span></div>`; return; }
 
   if (list.length === 1){
-    previewBlock('addr-preview', drawAddr(list[0]), 'Адресна етикетка');
+    previewBlock('addr-preview', drawAddr(list[0]), 'Адресна етикетка', cpclAddr(list[0]));
   } else {
     const pv = document.createElement('div'); pv.className='card';
     pv.innerHTML = `<div class="nm">Діапазон: ${list.length} етикеток</div><div class="meta">${list.join(' · ')}</div>`;
     el.appendChild(pv);
     const btn = document.createElement('button'); btn.className='btn';
     btn.textContent = `🖨 ДРУК ВСІХ (${list.length})`;
-    btn.onclick = ()=> list.forEach((a,i)=> setTimeout(()=> printLabel(drawAddr(a)), i*900));
+    btn.onclick = ()=> list.forEach((a,i)=> setTimeout(()=> emit(drawAddr(a), cpclAddr(a)), i*900));
     el.appendChild(btn);
   }
 });
@@ -759,9 +805,9 @@ $('in-find').addEventListener('keydown', e=>{
   if (rec){
     out.innerHTML = cardHtml(rec);
     const b1 = document.createElement('button'); b1.className='btn'; b1.textContent='🖨 Етикетка SKU';
-    b1.onclick = ()=> printLabel(drawSku(rec));
+    b1.onclick = ()=> emit(drawSku(rec), cpclSku(rec));
     const b2 = document.createElement('button'); b2.className='btn sec'; b2.textContent='🖨 Етикетка SKU + адреса';
-    b2.onclick = ()=> printLabel(drawSkuAddr(rec));
+    b2.onclick = ()=> emit(drawSkuAddr(rec), cpclSkuAddr(rec));
     out.appendChild(b1); out.appendChild(b2);
     return;
   }
