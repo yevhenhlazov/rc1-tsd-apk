@@ -240,7 +240,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v1.9 · 2026-06-17</b> · CPCL етикетки (комірка, SKU+адреса)
+      <b style="color:var(--c-sku)">Збірка: v2.0 · 2026-06-17</b> · верстка: SKU-4 крупно + ШК, адреса з підписами
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -517,44 +517,59 @@ function cpclTest(){
   ].join('\r\n');
 }
 
-/* ── реальні етикетки в CPCL (100×100 мм = 800 dots, ASCII) ── */
+/* ── реальні етикетки в CPCL (100 мм = 800 dots, ASCII) ── */
 function cc(){ return Math.max(1, parseInt(S.copies)||1); }
 function clean(s){ return String(s==null?'':s).replace(/[\r\n]+/g,' ').trim(); }
+/* авто-розмір (font7 ≈ 11 dots/символ при mag1), щоб текст не вилазив за ширину */
+function magFit(text, maxW, cap){
+  const len = Math.max(1, String(text).length);
+  return Math.max(1, Math.min(cap||8, Math.floor(maxW / (len*11))));
+}
+function addrParts(addr){ const p = clean(addr).split('-'); return [p[0]||'', p[1]||'', p[2]||'']; }
 
-/* етикетка комірки: KOMIRKA + велика адреса + штрихкод адреси */
+/* ЕТИКЕТКА КОМІРКИ (на полицю): підписи + ВЕЛИКА адреса + штрихкод */
 function cpclAddr(addr){
-  addr = clean(addr);
-  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER',
-    'TEXT 7 0 0 60 KOMIRKA',
-    'LINE 40 135 760 135 4',
-    'SETMAG 6 6', 'TEXT 7 0 0 210 '+addr, 'SETMAG 0 0',
-    'BARCODE 128 3 2 170 0 520 '+addr,
-    'TEXT 7 0 0 740 '+addr,
+  addr = clean(addr); const [pp,ss,lvl] = addrParts(addr);
+  const m = magFit(addr, 720, 7);
+  return ['! 0 200 200 600 '+cc(), 'PW 800', 'CENTER',
+    'SETMAG 2 2', 'TEXT 7 0 0 25 RYAD '+pp+'   SEKTS '+ss+'   RIVEN '+lvl, 'SETMAG 0 0',
+    'LINE 40 110 760 110 4',
+    'SETMAG '+m+' '+m, 'TEXT 7 0 0 160 '+addr, 'SETMAG 0 0',
+    'BARCODE 128 3 3 170 0 310 '+addr,
+    'SETMAG 2 2', 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
     'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
 }
 
-/* етикетка SKU + адреса: SKU+штрихкод, велика адреса+штрихкод */
+/* ЕТИКЕТКА SKU+АДРЕСА (на товар): ВЕЛИКИЙ SKU-4 + повний штрихкод SKU, нижче адреса з підписами */
 function cpclSkuAddr(rec){
   const sku = clean(rec.sku), addr = clean(rec.addr || '??-??-?');
-  return ['! 0 200 200 800 '+cc(), 'PW 800',
-    'TEXT 7 0 30 30 SKU '+sku,
-    'BARCODE 128 1 2 140 30 85 '+sku,
-    'LINE 30 320 770 320 4',
-    'CENTER', 'TEXT 7 0 0 350 MISCE ZBERIGANNYA',
-    'SETMAG 4 4', 'TEXT 7 0 0 400 '+addr, 'SETMAG 0 0',
-    'BARCODE 128 2 2 130 0 630 '+addr,
-    'TEXT 7 0 0 760 '+addr,
+  const sku4 = sku.slice(-4);
+  const [pp,ss,lvl] = addrParts(addr);
+  const s4 = magFit(sku4, 700, 8);    // SKU-4 — найбільший (читається з полиці)
+  const am = magFit(addr, 560, 4);    // адреса — менша
+  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER',
+    'SETMAG 2 2', 'TEXT 7 0 0 15 SKU-4', 'SETMAG 0 0',
+    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 50 '+sku4, 'SETMAG 0 0',
+    'BARCODE 128 1 2 120 0 195 '+sku,
+    'SETMAG 1 1', 'TEXT 7 0 0 325 SKU '+sku, 'SETMAG 0 0',
+    'LINE 30 370 770 370 4',
+    'SETMAG 2 2', 'TEXT 7 0 0 395 RYAD '+pp+'  SEKTS '+ss+'  RIVEN '+lvl, 'SETMAG 0 0',
+    'SETMAG '+am+' '+am, 'TEXT 7 0 0 445 '+addr, 'SETMAG 0 0',
+    'BARCODE 128 2 2 110 0 585 '+addr,
+    'SETMAG 1 1', 'TEXT 7 0 0 715 '+addr, 'SETMAG 0 0',
     'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
 }
 
-/* етикетка лише SKU */
+/* ЕТИКЕТКА ЛИШЕ SKU: великий SKU-4 + повний штрихкод SKU */
 function cpclSku(rec){
-  const sku = clean(rec.sku);
-  return ['! 0 200 200 600 '+cc(), 'PW 800',
-    'TEXT 7 0 30 40 SKU '+sku,
-    'BARCODE 128 1 2 190 30 100 '+sku,
-    'TEXT 7 0 30 330 '+sku,
-    'FORM', 'PRINT', ''].join('\r\n');
+  const sku = clean(rec.sku), sku4 = sku.slice(-4);
+  const s4 = magFit(sku4, 700, 8);
+  return ['! 0 200 200 520 '+cc(), 'PW 800', 'CENTER',
+    'SETMAG 2 2', 'TEXT 7 0 0 20 SKU-4', 'SETMAG 0 0',
+    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 60 '+sku4, 'SETMAG 0 0',
+    'BARCODE 128 1 2 140 0 210 '+sku,
+    'SETMAG 1 1', 'TEXT 7 0 0 380 SKU '+sku, 'SETMAG 0 0',
+    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
 }
 
 /* єдина точка: в APK → CPCL нативно; у браузері → растр (стара логіка) */
