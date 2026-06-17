@@ -242,7 +242,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v3.0 · 2026-06-17</b> · стабільний CPCL-друк (без растру; підписи транслітом)
+      <b style="color:var(--c-sku)">Збірка: v3.1 · 2026-06-17</b> · заголовки без чорної смуги (тонка лінія)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -540,11 +540,11 @@ function magFit(text, maxW, cap){
 }
 function addrParts(addr){ const p = clean(addr).split('-'); return [p[0]||'', p[1]||'', p[2]||'']; }
 
-/* інверс-заголовок зони: білий текст на чорній смузі (рідний CPCL, без растру → не зависає) */
+/* заголовок зони: звичайний текст + тонка лінія-роздільник (БЕЗ чорної смуги) */
 function cpclHdr(title, yTop, h){
-  const mid = yTop + Math.floor(h/2);
-  return ['SETMAG 2 2', 'TEXT 7 0 0 '+(yTop+8)+' '+title, 'SETMAG 0 0',
-          'INVERSE-LINE 16 '+mid+' 784 '+mid+' '+h];
+  const lineY = yTop + h - 2;
+  return ['SETMAG 2 2', 'TEXT 7 0 0 '+(yTop+6)+' '+title, 'SETMAG 0 0',
+          'LINE 40 '+lineY+' 760 '+lineY+' 2'];
 }
 
 /* ЕТИКЕТКА КОМІРКИ (полиця): зона MISCE, RYAD/STELAZH/POLKA, ВЕЛИКА адреса + ШК — все рідним CPCL */
