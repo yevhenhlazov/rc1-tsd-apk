@@ -240,7 +240,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.0 · 2026-06-17</b> · верстка: SKU-4 крупно + ШК, адреса з підписами
+      <b style="color:var(--c-sku)">Збірка: v2.1 · 2026-06-17</b> · дизайн: рамка + зони SKU/MISCE (інверс) + великі
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -527,49 +527,58 @@ function magFit(text, maxW, cap){
 }
 function addrParts(addr){ const p = clean(addr).split('-'); return [p[0]||'', p[1]||'', p[2]||'']; }
 
-/* ЕТИКЕТКА КОМІРКИ (на полицю): підписи + ВЕЛИКА адреса + штрихкод */
+/* інверс-заголовок зони: білий текст на чорній смузі (око одразу чіпляється) */
+function cpclHdr(title, yTop, h){
+  const mid = yTop + Math.floor(h/2);
+  return ['SETMAG 2 2', 'TEXT 7 0 0 '+(yTop+8)+' '+title, 'SETMAG 0 0',
+          'INVERSE-LINE 16 '+mid+' 784 '+mid+' '+h];
+}
+
+/* ЕТИКЕТКА КОМІРКИ (полиця): рамка, зона MISCE, ВЕЛИКА адреса, штрихкод */
 function cpclAddr(addr){
   addr = clean(addr); const [pp,ss,lvl] = addrParts(addr);
-  const m = magFit(addr, 720, 7);
-  return ['! 0 200 200 600 '+cc(), 'PW 800', 'CENTER',
-    'SETMAG 2 2', 'TEXT 7 0 0 25 RYAD '+pp+'   SEKTS '+ss+'   RIVEN '+lvl, 'SETMAG 0 0',
-    'LINE 40 110 760 110 4',
-    'SETMAG '+m+' '+m, 'TEXT 7 0 0 160 '+addr, 'SETMAG 0 0',
-    'BARCODE 128 3 3 170 0 310 '+addr,
-    'SETMAG 2 2', 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
-    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+  const m = magFit(addr, 700, 7);
+  return ['! 0 200 200 620 '+cc(), 'PW 800', 'BOX 8 8 792 612 3', 'CENTER']
+    .concat(cpclHdr('MISCE', 25, 50))
+    .concat([
+      'SETMAG 2 2', 'TEXT 7 0 0 105 RYAD '+pp+'   SEKTS '+ss+'   RIVEN '+lvl, 'SETMAG 0 0',
+      'SETMAG '+m+' '+m, 'TEXT 7 0 0 155 '+addr, 'SETMAG 0 0',
+      'BARCODE 128 3 3 150 0 300 '+addr,
+      'SETMAG 2 2', 'TEXT 7 0 0 480 '+addr, 'SETMAG 0 0',
+      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
-/* ЕТИКЕТКА SKU+АДРЕСА (на товар): ВЕЛИКИЙ SKU-4 + повний штрихкод SKU, нижче адреса з підписами */
+/* ЕТИКЕТКА SKU+АДРЕСА (товар): зона SKU (вел. SKU-4 + ШК) → зона MISCE (вел. адреса + ШК) */
 function cpclSkuAddr(rec){
   const sku = clean(rec.sku), addr = clean(rec.addr || '??-??-?');
-  const sku4 = sku.slice(-4);
-  const [pp,ss,lvl] = addrParts(addr);
-  const s4 = magFit(sku4, 700, 8);    // SKU-4 — найбільший (читається з полиці)
-  const am = magFit(addr, 560, 4);    // адреса — менша
-  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER',
-    'SETMAG 2 2', 'TEXT 7 0 0 15 SKU-4', 'SETMAG 0 0',
-    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 50 '+sku4, 'SETMAG 0 0',
-    'BARCODE 128 1 2 120 0 195 '+sku,
-    'SETMAG 1 1', 'TEXT 7 0 0 325 SKU '+sku, 'SETMAG 0 0',
-    'LINE 30 370 770 370 4',
-    'SETMAG 2 2', 'TEXT 7 0 0 395 RYAD '+pp+'  SEKTS '+ss+'  RIVEN '+lvl, 'SETMAG 0 0',
-    'SETMAG '+am+' '+am, 'TEXT 7 0 0 445 '+addr, 'SETMAG 0 0',
-    'BARCODE 128 2 2 110 0 585 '+addr,
-    'SETMAG 1 1', 'TEXT 7 0 0 715 '+addr, 'SETMAG 0 0',
-    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+  const sku4 = sku.slice(-4); const [pp,ss,lvl] = addrParts(addr);
+  const s4 = magFit(sku4, 700, 8);    // SKU-4 — найбільший
+  const am = magFit(addr, 640, 6);    // адреса — теж велика
+  return ['! 0 200 200 800 '+cc(), 'PW 800', 'BOX 8 8 792 792 3', 'CENTER']
+    .concat(cpclHdr('SKU', 22, 46))
+    .concat([
+      'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 90 '+sku4, 'SETMAG 0 0',
+      'BARCODE 128 1 2 100 0 235 '+sku,
+      'SETMAG 1 1', 'TEXT 7 0 0 350 SKU '+sku, 'SETMAG 0 0'])
+    .concat(cpclHdr('MISCE', 392, 46))
+    .concat([
+      'SETMAG 2 2', 'TEXT 7 0 0 455 RYAD '+pp+'  SEKTS '+ss+'  RIVEN '+lvl, 'SETMAG 0 0',
+      'SETMAG '+am+' '+am, 'TEXT 7 0 0 505 '+addr, 'SETMAG 0 0',
+      'BARCODE 128 2 2 90 0 640 '+addr,
+      'SETMAG 1 1', 'TEXT 7 0 0 752 '+addr, 'SETMAG 0 0',
+      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
-/* ЕТИКЕТКА ЛИШЕ SKU: великий SKU-4 + повний штрихкод SKU */
+/* ЕТИКЕТКА ЛИШЕ SKU: рамка, зона SKU, вел. SKU-4 + ШК */
 function cpclSku(rec){
-  const sku = clean(rec.sku), sku4 = sku.slice(-4);
-  const s4 = magFit(sku4, 700, 8);
-  return ['! 0 200 200 520 '+cc(), 'PW 800', 'CENTER',
-    'SETMAG 2 2', 'TEXT 7 0 0 20 SKU-4', 'SETMAG 0 0',
-    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 60 '+sku4, 'SETMAG 0 0',
-    'BARCODE 128 1 2 140 0 210 '+sku,
-    'SETMAG 1 1', 'TEXT 7 0 0 380 SKU '+sku, 'SETMAG 0 0',
-    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
+  const sku = clean(rec.sku), sku4 = sku.slice(-4); const s4 = magFit(sku4, 700, 8);
+  return ['! 0 200 200 470 '+cc(), 'PW 800', 'BOX 8 8 792 462 3', 'CENTER']
+    .concat(cpclHdr('SKU', 22, 46))
+    .concat([
+      'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 95 '+sku4, 'SETMAG 0 0',
+      'BARCODE 128 1 2 120 0 250 '+sku,
+      'SETMAG 1 1', 'TEXT 7 0 0 390 SKU '+sku, 'SETMAG 0 0',
+      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
 /* єдина точка: в APK → CPCL нативно; у браузері → растр (стара логіка) */
