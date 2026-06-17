@@ -241,7 +241,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.5 · 2026-06-17</b> · 2 тести: ТЕКСТ окремо, EG окремо
+      <b style="color:var(--c-sku)">Збірка: v2.6 · 2026-06-17</b> · гібрид: рідний CPCL + EG лише для укр. слів
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -548,58 +548,63 @@ function magFit(text, maxW, cap){
 }
 function addrParts(addr){ const p = clean(addr).split('-'); return [p[0]||'', p[1]||'', p[2]||'']; }
 
-/* інверс-заголовок зони: білий текст на чорній смузі (око одразу чіпляється) */
-function cpclHdr(title, yTop, h){
-  const mid = yTop + Math.floor(h/2);
-  return ['SETMAG 2 2', 'TEXT 7 0 0 '+(yTop+8)+' '+title, 'SETMAG 0 0',
-          'INVERSE-LINE 16 '+mid+' 784 '+mid+' '+h];
+/* EG-смужка з УКРАЇНСЬКИМ текстом (растр лише для кирилиці; кожна смужка мала → влазить у принтер).
+   invert=true → білий текст на чорній смузі (заголовок зони). Повертає CPCL-команду EG. */
+function egStrip(text, yPos, fontPx, invert){
+  const h = Math.round(fontPx*1.45);
+  const cv = document.createElement('canvas'); cv.width = LBL; cv.height = h;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = invert?'#000':'#fff'; cx.fillRect(0,0,LBL,h);
+  cx.fillStyle = invert?'#fff':'#000';
+  cx.textAlign='center'; cx.textBaseline='middle';
+  cx.font='bold '+fontPx+'px sans-serif';
+  cx.fillText(text, LBL/2, h/2+1);
+  const {buf,bpr,h:hh} = toMono(cv);
+  let hex=''; for(let i=0;i<buf.length;i++) hex += buf[i].toString(16).padStart(2,'0').toUpperCase();
+  return 'EG '+bpr+' '+hh+' 0 '+yPos+' '+hex;
 }
 
-/* ЕТИКЕТКА КОМІРКИ (полиця): рамка, зона MISCE, ВЕЛИКА адреса, штрихкод */
+/* ЕТИКЕТКА КОМІРКИ (полиця): «МІСЦЕ ЗБЕРІГАННЯ» (EG), Ряд/Стелаж/Полка (EG), ВЕЛИКА адреса+ШК (рідний CPCL) */
 function cpclAddr(addr){
   addr = clean(addr); const [pp,ss,lvl] = addrParts(addr);
   const m = magFit(addr, 700, 7);
-  return ['! 0 200 200 620 '+cc(), 'PW 800', 'BOX 8 8 792 612 3', 'CENTER']
-    .concat(cpclHdr('MISCE', 25, 50))
-    .concat([
-      'SETMAG 2 2', 'TEXT 7 0 0 105 RYAD '+pp+'   SEKTS '+ss+'   RIVEN '+lvl, 'SETMAG 0 0',
-      'SETMAG '+m+' '+m, 'TEXT 7 0 0 155 '+addr, 'SETMAG 0 0',
-      'BARCODE 128 3 3 150 0 300 '+addr,
-      'SETMAG 2 2', 'TEXT 7 0 0 480 '+addr, 'SETMAG 0 0',
-      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
+  return ['! 0 200 200 600 '+cc(), 'PW 800', 'CENTER',
+    egStrip('МІСЦЕ ЗБЕРІГАННЯ', 16, 48, true),
+    egStrip('Ряд '+pp+'    Стелаж '+ss+'    Полка '+lvl, 110, 40, false),
+    'SETMAG '+m+' '+m, 'TEXT 7 0 0 185 '+addr, 'SETMAG 0 0',
+    'BARCODE 128 3 3 150 0 330 '+addr,
+    'SETMAG 2 2', 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
+    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
 }
 
-/* ЕТИКЕТКА SKU+АДРЕСА (товар): зона SKU (вел. SKU-4 + ШК) → зона MISCE (вел. адреса + ШК) */
+/* ЕТИКЕТКА SKU+АДРЕСА (товар): зона ТОВАР (вел. SKU-4 + ШК) → зона МІСЦЕ (Ряд/Стелаж/Полка + вел. адреса + ШК) */
 function cpclSkuAddr(rec){
   const sku = clean(rec.sku), addr = clean(rec.addr || '??-??-?');
   const sku4 = sku.slice(-4); const [pp,ss,lvl] = addrParts(addr);
   const s4 = magFit(sku4, 700, 8);    // SKU-4 — найбільший
   const am = magFit(addr, 640, 6);    // адреса — теж велика
-  return ['! 0 200 200 800 '+cc(), 'PW 800', 'BOX 8 8 792 792 3', 'CENTER']
-    .concat(cpclHdr('SKU', 22, 46))
-    .concat([
-      'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 90 '+sku4, 'SETMAG 0 0',
-      'BARCODE 128 1 2 100 0 235 '+sku,
-      'SETMAG 1 1', 'TEXT 7 0 0 350 SKU '+sku, 'SETMAG 0 0'])
-    .concat(cpclHdr('MISCE', 392, 46))
-    .concat([
-      'SETMAG 2 2', 'TEXT 7 0 0 455 RYAD '+pp+'  SEKTS '+ss+'  RIVEN '+lvl, 'SETMAG 0 0',
-      'SETMAG '+am+' '+am, 'TEXT 7 0 0 505 '+addr, 'SETMAG 0 0',
-      'BARCODE 128 2 2 90 0 640 '+addr,
-      'SETMAG 1 1', 'TEXT 7 0 0 752 '+addr, 'SETMAG 0 0',
-      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
+  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER',
+    egStrip('ТОВАР', 14, 42, true),
+    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 80 '+sku4, 'SETMAG 0 0',
+    'BARCODE 128 1 2 100 0 230 '+sku,
+    'SETMAG 1 1', 'TEXT 7 0 0 350 SKU '+sku, 'SETMAG 0 0',
+    egStrip('МІСЦЕ ЗБЕРІГАННЯ', 392, 42, true),
+    egStrip('Ряд '+pp+'   Стелаж '+ss+'   Полка '+lvl, 455, 34, false),
+    'SETMAG '+am+' '+am, 'TEXT 7 0 0 510 '+addr, 'SETMAG 0 0',
+    'BARCODE 128 2 2 90 0 645 '+addr,
+    'SETMAG 1 1', 'TEXT 7 0 0 755 '+addr, 'SETMAG 0 0',
+    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
 }
 
-/* ЕТИКЕТКА ЛИШЕ SKU: рамка, зона SKU, вел. SKU-4 + ШК */
+/* ЕТИКЕТКА ЛИШЕ SKU: зона ТОВАР (EG) + вел. SKU-4 + ШК (рідний CPCL) */
 function cpclSku(rec){
   const sku = clean(rec.sku), sku4 = sku.slice(-4); const s4 = magFit(sku4, 700, 8);
-  return ['! 0 200 200 470 '+cc(), 'PW 800', 'BOX 8 8 792 462 3', 'CENTER']
-    .concat(cpclHdr('SKU', 22, 46))
-    .concat([
-      'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 95 '+sku4, 'SETMAG 0 0',
-      'BARCODE 128 1 2 120 0 250 '+sku,
-      'SETMAG 1 1', 'TEXT 7 0 0 390 SKU '+sku, 'SETMAG 0 0',
-      'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
+  return ['! 0 200 200 470 '+cc(), 'PW 800', 'CENTER',
+    egStrip('ТОВАР', 16, 48, true),
+    'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 100 '+sku4, 'SETMAG 0 0',
+    'BARCODE 128 1 2 120 0 255 '+sku,
+    'SETMAG 1 1', 'TEXT 7 0 0 395 SKU '+sku, 'SETMAG 0 0',
+    'LEFT', 'FORM', 'PRINT', ''].join('\r\n');
 }
 
 /* CPCL EG (ASCII-hex) з canvas — кирилиця як зображення, проходить через UTF-8 плагіна */
@@ -609,9 +614,9 @@ function toCpclRaster(c, copies){
   return '! 0 200 200 '+h+' '+(copies||1)+'\r\nEG '+bpr+' '+h+' 0 0 '+hex+'\r\nFORM\r\nPRINT\r\n';
 }
 
-/* єдина точка: в APK → CPCL-растр (canvas → EG hex, з кирилицею); у браузері → RawBT (відладка) */
+/* єдина точка: в APK → рідний CPCL (цифри/ШК нативно + EG-смужки лише для укр. слів); браузер → прев'ю */
 function emit(canvas, cpcl){
-  if (nativeBtAvailable()){ btSend(toCpclRaster(canvas, cc())); return; }
+  if (nativeBtAvailable()){ btSend(cpcl); return; }
   printLabel(canvas);
 }
 
