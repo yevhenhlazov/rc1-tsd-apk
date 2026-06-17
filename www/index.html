@@ -240,7 +240,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v1.6 · 2026-06-17</b> · native BT (CPCL/ESC*33), perms-fix
+      <b style="color:var(--c-sku)">Збірка: v1.7 · 2026-06-17</b> · нативний CPCL-друк (bluetooth-serial)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -487,35 +487,46 @@ function b64(bytes){
 window.addEventListener('error', e=>{ try{ toast('JS: '+(e.message||e.error||e),'err'); }catch(_){} });
 window.addEventListener('unhandledrejection', e=>{ try{ toast('PROMISE: '+((e.reason&&e.reason.message)||e.reason||''),'err'); }catch(_){} });
 
-/* MAC принтера CMP-40 (для нативного BT в APK) */
+/* MAC принтера CMP-40 */
 const PRINTER_MAC = '00:13:7B:5E:81:A0';
 
-/* native BT (Capacitor + cordova-plugin-bluetooth-serial): шле байти ПОРЦІЯМИ з паузами, як MDemo */
-function nativeBtAvailable(){ return !!(window.Capacitor && window.bluetoothSerial); }
-function sendNative(bytes){
+/* Capacitor-нативний BT (плагін bluetooth-serial) через Capacitor.Plugins */
+function btPlugin(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BluetoothSerial) || null; }
+function nativeBtAvailable(){ return !!btPlugin(); }
+
+/* надсилання CPCL-тексту: дозвіл → конект → запис рядка порціями */
+async function btSend(str){
+  const Bt = btPlugin();
+  if (!Bt){ toast('BT-плагін не підвантажився','err'); return; }
   try{
-    const bs = window.bluetoothSerial, CHUNK = 512, DELAY = 40;
-    if (!bs || typeof bs.write !== 'function'){ toast('BT-плагін не знайдено','err'); return; }
-    const writeChunks = ()=>{
-      let i = 0;
-      (function next(){
-        try{
-          if (i >= bytes.length){ toast('Надруковано ✓','ok'); return; }
-          const part = bytes.slice(i, i+CHUNK); i += CHUNK;
-          bs.write(part.buffer, ()=> setTimeout(next, DELAY), e=> toast('BT write: '+e,'err'));
-        }catch(err){ toast('write exc: '+err.message,'err'); }
-      })();
-    };
-    bs.isConnected(writeChunks, ()=>
-      bs.connect(PRINTER_MAC, ()=> setTimeout(writeChunks, 600),
-                 e=> toast('BT connect: '+e,'err')));
-  }catch(err){ toast('native exc: '+err.message,'err'); }
+    try{ await Bt.requestPermissions({ permissions:['connect'] }); }catch(_){}
+    let conn=false; try{ const r = await Bt.isConnected(); conn = r && r.isConnected; }catch(_){}
+    if (!conn) await Bt.connect({ address: PRINTER_MAC });
+    const CHUNK=256;
+    for (let i=0;i<str.length;i+=CHUNK){
+      await Bt.write({ data: str.slice(i, i+CHUNK) });
+      await new Promise(r=>setTimeout(r,25));
+    }
+    toast('Надруковано ✓','ok');
+  }catch(err){ toast('BT: '+((err&&err.message)||err),'err'); }
 }
 
-/* транспорт: в APK → нативний BT (порціями); у браузері → RawBT-intent (для відладки UI) */
+/* CPCL-текст (ASCII) — рідна мова принтера, без растру */
+function cpclTest(){
+  return [
+    '! 0 200 200 320 1',
+    'PW 600',
+    'TEXT 4 0 40 30 RC1 TSD TEST',
+    'TEXT 7 0 40 120 Misce: 03-12-B',
+    'BARCODE 128 2 2 120 40 160 482310012345',
+    'TEXT 7 0 40 300 SKU 482310012345',
+    'FORM','PRINT',''
+  ].join('\r\n');
+}
+
+/* RawBT-фолбек лише для браузера (відладка UI поза APK) */
 function sendRaw(bytes){
-  if (nativeBtAvailable()){ sendNative(bytes); return; }
-  if (window.Capacitor){ toast('BT-плагін не підвантажився в APK','err'); return; }
+  if (window.Capacitor){ toast('У APK друк нативний (CPCL)','err'); return; }
   const s = b64(bytes);
   if (/android/i.test(navigator.userAgent))
     location.href = 'intent:base64,' + s + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
@@ -811,6 +822,7 @@ $('set-save').onclick = ()=>{
 $('set-sync').onclick = syncBase;
 $('set-retry').onclick = retryPend;
 $('set-test').onclick = ()=>{
+  if (nativeBtAvailable()){ btSend(cpclTest()); return; }   // APK → нативний CPCL-друк
   const [c,x] = newLabel();
   x.textAlign='center'; x.font='900 120px sans-serif'; x.fillText('ТЕСТ', LBL/2, 200);
   const bc = barcode('TEST-0001', 600, 180); if (bc) x.drawImage(bc, 100, 260);
