@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ТСД РЦ-1 · Склад</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<script src="JsBarcode.all.min.js"></script>
 <style>
   :root{
     --ink:#14181d; --paper:#f4f6f8; --card:#ffffff; --line:#d7dde3;
@@ -482,30 +482,39 @@ function b64(bytes){
   return btoa(s);
 }
 
+/* глобальні перехоплювачі помилок — щоб бачити причину, а не «тихе падіння» */
+window.addEventListener('error', e=>{ try{ toast('JS: '+(e.message||e.error||e),'err'); }catch(_){} });
+window.addEventListener('unhandledrejection', e=>{ try{ toast('PROMISE: '+((e.reason&&e.reason.message)||e.reason||''),'err'); }catch(_){} });
+
 /* MAC принтера CMP-40 (для нативного BT в APK) */
 const PRINTER_MAC = '00:13:7B:5E:81:A0';
 
 /* native BT (Capacitor + cordova-plugin-bluetooth-serial): шле байти ПОРЦІЯМИ з паузами, як MDemo */
 function nativeBtAvailable(){ return !!(window.Capacitor && window.bluetoothSerial); }
 function sendNative(bytes){
-  const bs = window.bluetoothSerial, CHUNK = 1024, DELAY = 30;
-  const writeChunks = ()=>{
-    let i = 0;
-    (function next(){
-      if (i >= bytes.length){ toast('Надруковано ✓','ok'); return; }
-      const part = bytes.slice(i, i+CHUNK); i += CHUNK;
-      bs.write(part.buffer || part, ()=> setTimeout(next, DELAY),
-               e=> toast('BT write: '+e,'err'));
-    })();
-  };
-  bs.isConnected(writeChunks, ()=>
-    bs.connect(PRINTER_MAC, ()=> setTimeout(writeChunks, 400),
-               e=> toast('BT connect: '+e,'err')));
+  try{
+    const bs = window.bluetoothSerial, CHUNK = 512, DELAY = 40;
+    if (!bs || typeof bs.write !== 'function'){ toast('BT-плагін не знайдено','err'); return; }
+    const writeChunks = ()=>{
+      let i = 0;
+      (function next(){
+        try{
+          if (i >= bytes.length){ toast('Надруковано ✓','ok'); return; }
+          const part = bytes.slice(i, i+CHUNK); i += CHUNK;
+          bs.write(part.buffer, ()=> setTimeout(next, DELAY), e=> toast('BT write: '+e,'err'));
+        }catch(err){ toast('write exc: '+err.message,'err'); }
+      })();
+    };
+    bs.isConnected(writeChunks, ()=>
+      bs.connect(PRINTER_MAC, ()=> setTimeout(writeChunks, 600),
+                 e=> toast('BT connect: '+e,'err')));
+  }catch(err){ toast('native exc: '+err.message,'err'); }
 }
 
 /* транспорт: в APK → нативний BT (порціями); у браузері → RawBT-intent (для відладки UI) */
 function sendRaw(bytes){
-  if (nativeBtAvailable()) { sendNative(bytes); return; }
+  if (nativeBtAvailable()){ sendNative(bytes); return; }
+  if (window.Capacitor){ toast('BT-плагін не підвантажився в APK','err'); return; }
   const s = b64(bytes);
   if (/android/i.test(navigator.userAgent))
     location.href = 'intent:base64,' + s + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
