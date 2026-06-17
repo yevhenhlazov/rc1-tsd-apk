@@ -241,7 +241,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.6 · 2026-06-17</b> · гібрид: рідний CPCL + EG лише для укр. слів
+      <b style="color:var(--c-sku)">Збірка: v2.7 · 2026-06-17</b> · гібрид + connectAndPrint (як робочі тести)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -504,25 +504,16 @@ const PRINTER_MAC = '00:13:7B:5E:81:A0';
 function btPlugin(){ return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BluetoothPrinter) || null; }
 function nativeBtAvailable(){ return !!btPlugin(); }
 
-/* друк: конект → дані ПОРЦІЯМИ (інакше великий растр не доходить до PRINT) → диконект */
+/* друк: ОДИН виклик connectAndPrint — саме так друкувались обидва робочі тести (Тест1 текст, Тест2 EG).
+   Порційний connect→print→disconnect із цим плагіном не друкує, тому повернуто на connectAndPrint. */
 async function btSend(str){
   const Bt = btPlugin();
   if (!Bt){ toast('BT-плагін не підвантажився','err'); return; }
-  const CHUNK = 1024, DELAY = 40;          // 1 КБ + пауза, щоб принтер встигав читати буфер
   try{
     toast('Друк…','ok');
-    await Bt.connect({ address: PRINTER_MAC });
-    for (let i=0; i<str.length; i+=CHUNK){
-      await Bt.print({ data: str.slice(i, i+CHUNK) });
-      await new Promise(r => setTimeout(r, DELAY));
-    }
-    await new Promise(r => setTimeout(r, 500));   // дати дочитати останній блок перед розривом
-    try{ await Bt.disconnect(); }catch(e){}
+    await Bt.connectAndPrint({ address: PRINTER_MAC, data: str });
     toast('Надруковано ✓','ok');
-  }catch(err){
-    try{ await Bt.disconnect(); }catch(e){}
-    toast('BT: '+((err&&err.message)||err),'err');
-  }
+  }catch(err){ toast('BT: '+((err&&err.message)||err),'err'); }
 }
 
 /* CPCL-текст (ASCII) — рідна мова принтера, без растру */
