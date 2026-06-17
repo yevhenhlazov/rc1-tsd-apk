@@ -240,7 +240,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.1 · 2026-06-17</b> · дизайн: рамка + зони SKU/MISCE (інверс) + великі
+      <b style="color:var(--c-sku)">Збірка: v2.2 · 2026-06-17</b> · растр-друк (укр. кирилиця, Ряд/Стелаж/Полка)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -345,55 +345,64 @@ function footer(x){
   x.textAlign = 'right'; x.fillText(S.op || '', LBL-30, LBL-26); x.textAlign = 'left';
 }
 
-/* Етикетка SKU: ШК + назва */
+/* ── helpers дизайну (українською, велике й зрозуміле) ── */
+function hbar(x, y, h, title){                 // чорна смуга з білим текстом
+  x.fillStyle='#000'; x.fillRect(20, y, LBL-40, h);
+  x.fillStyle='#fff'; x.textAlign='center'; x.textBaseline='middle';
+  x.font='bold '+Math.round(h*0.58)+'px sans-serif';
+  x.fillText(title, LBL/2, y+h/2+1);
+  x.textBaseline='alphabetic'; x.fillStyle='#000'; x.textAlign='center';
+}
+function fitFont(x, text, maxW, startPx){        // авто-розмір, щоб влізло
+  let p=startPx; x.font='900 '+p+'px sans-serif';
+  while(p>26 && x.measureText(text).width>maxW){ p-=4; x.font='900 '+p+'px sans-serif'; }
+  return p;
+}
+function frame(x){ x.strokeStyle='#000'; x.lineWidth=4; x.strokeRect(8,8,LBL-16,LBL-16); }
+
+/* Етикетка ТОВАР: ВЕЛИКИЙ SKU-4 + штрихкод повного SKU */
 function drawSku(rec){
-  const [c,x] = newLabel();
-  x.textAlign='center'; x.font='bold 36px sans-serif';
-  if (rec.brand) x.fillText(String(rec.brand).toUpperCase(), LBL/2, 52);
-  const bc = barcode(rec.sku, 720, 230);
-  if (bc) x.drawImage(bc, 40, 75);
-  x.font='bold 46px monospace'; x.fillText(rec.sku, LBL/2, 365);
-  x.font='bold 52px sans-serif';
-  const lines = wrap(x, rec.name || '—', 740, 'bold 52px sans-serif');
-  lines.slice(0,5).forEach((l,i)=> x.fillText(l, LBL/2, 450 + i*64));
-  x.textAlign='left'; footer(x);
-  return c;
+  const [c,x]=newLabel(); frame(x);
+  const sku=String(rec.sku||''), sku4=sku.slice(-4);
+  hbar(x,28,66,'ТОВАР');
+  x.fillStyle='#000'; x.textAlign='center';
+  x.font='bold 34px sans-serif'; x.fillText('SKU (останні 4):', LBL/2, 150);
+  fitFont(x, sku4, LBL-120, 230); x.fillText(sku4, LBL/2, 330);
+  const bc=barcode(sku, 700, 150); if(bc) x.drawImage(bc,(LBL-700)/2, 380);
+  x.fillStyle='#000'; x.font='bold 40px monospace'; x.fillText('SKU '+sku, LBL/2, 585);
+  x.textAlign='left'; footer(x); return c;
 }
 
-/* Етикетка SKU + адреса */
+/* Етикетка ТОВАР + МІСЦЕ: зона товару (SKU-4+ШК) → зона місця (адреса+ШК) */
 function drawSkuAddr(rec){
-  const [c,x] = newLabel();
-  const bc = barcode(rec.sku, 680, 160);
-  if (bc) x.drawImage(bc, 60, 30);
-  x.textAlign='center'; x.font='bold 40px monospace'; x.fillText(rec.sku, LBL/2, 235);
-  x.font='bold 44px sans-serif';
-  const lines = wrap(x, rec.name || '—', 740, 'bold 44px sans-serif');
-  lines.slice(0,2).forEach((l,i)=> x.fillText(l, LBL/2, 300 + i*54));
-  // роздільник
-  x.fillRect(40, 425, LBL-80, 5);
-  x.font='bold 30px sans-serif'; x.fillText('МІСЦЕ ЗБЕРІГАННЯ', LBL/2, 478);
-  x.font='900 150px sans-serif'; x.fillText(rec.addr || '??-??-?', LBL/2, 615);
-  const ab = rec.addr ? barcode(rec.addr, 440, 90) : null;
-  if (ab) x.drawImage(ab, (LBL-440)/2, 650);
-  x.textAlign='left'; footer(x);
-  return c;
+  const [c,x]=newLabel(); frame(x);
+  const sku=String(rec.sku||''), sku4=sku.slice(-4);
+  const addr=String(rec.addr||'??-??-?'); const [ryad,stel,polka]=addr.split('-');
+  hbar(x,18,52,'ТОВАР  —  SKU (останні 4)');
+  x.fillStyle='#000'; x.textAlign='center';
+  fitFont(x, sku4, LBL-150, 155); x.fillText(sku4, LBL/2, 205);
+  const bc=barcode(sku, 640, 110); if(bc) x.drawImage(bc,(LBL-640)/2, 230);
+  x.fillStyle='#000'; x.font='bold 28px monospace'; x.fillText('SKU '+sku, LBL/2, 365);
+  hbar(x,392,52,'МІСЦЕ ЗБЕРІГАННЯ');
+  x.fillStyle='#000'; x.textAlign='center'; x.font='bold 30px sans-serif';
+  x.fillText('Ряд '+(ryad||'?')+'   Стелаж '+(stel||'?')+'   Полка '+(polka||'?'), LBL/2, 482);
+  fitFont(x, addr, LBL-150, 92); x.fillText(addr, LBL/2, 560);
+  const ab=barcode(addr, 520, 95); if(ab) x.drawImage(ab,(LBL-520)/2, 590);
+  x.fillStyle='#000'; x.font='bold 28px monospace'; x.fillText(addr, LBL/2, 728);
+  x.textAlign='left'; footer(x); return c;
 }
 
-/* Адресна етикетка комірки */
+/* Етикетка МІСЦЕ (на полицю): ВЕЛИКА адреса + підписи + штрихкод */
 function drawAddr(addr){
-  const [c,x] = newLabel();
-  const [pp,ss,lvl] = addr.split('-');
-  x.textAlign='center';
-  x.font='bold 38px sans-serif';
-  x.fillText('РЯД '+pp+'  ·  СЕКЦІЯ '+ss+'  ·  РІВЕНЬ '+lvl, LBL/2, 70);
-  x.fillRect(40, 95, LBL-80, 5);
-  x.font='900 235px sans-serif';
-  x.fillText(addr, LBL/2, 370);
-  const ab = barcode(addr, 620, 190);
-  if (ab) x.drawImage(ab, (LBL-620)/2, 440);
-  x.font='bold 40px monospace'; x.fillText(addr, LBL/2, 690);
-  x.textAlign='left'; footer(x);
-  return c;
+  const [c,x]=newLabel(); frame(x);
+  addr=String(addr||''); const [ryad,stel,polka]=addr.split('-');
+  hbar(x,28,66,'МІСЦЕ ЗБЕРІГАННЯ');
+  x.fillStyle='#000'; x.textAlign='center'; x.font='bold 36px sans-serif';
+  x.fillText('Ряд '+(ryad||'?')+'    Стелаж '+(stel||'?')+'    Полка '+(polka||'?'), LBL/2, 165);
+  fitFont(x, addr, LBL-90, 235); x.fillText(addr, LBL/2, 390);
+  const ab=barcode(addr, 640, 170); if(ab) x.drawImage(ab,(LBL-640)/2, 440);
+  x.fillStyle='#000'; x.font='bold 44px monospace'; x.fillText(addr, LBL/2, 670);
+  x.textAlign='left'; footer(x); return c;
 }
 
 /* ═══ ДРУК ═══ */
@@ -581,9 +590,16 @@ function cpclSku(rec){
       'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
-/* єдина точка: в APK → CPCL нативно; у браузері → растр (стара логіка) */
+/* CPCL EG (ASCII-hex) з canvas — кирилиця як зображення, проходить через UTF-8 плагіна */
+function toCpclRaster(c, copies){
+  const {buf, bpr, h} = toMono(c);
+  let hex=''; for(let i=0;i<buf.length;i++) hex += buf[i].toString(16).padStart(2,'0').toUpperCase();
+  return '! 0 200 200 '+h+' '+(copies||1)+'\r\nEG '+bpr+' '+h+' 0 0 '+hex+'\r\nFORM\r\nPRINT\r\n';
+}
+
+/* єдина точка: в APK → CPCL-растр (canvas → EG hex, з кирилицею); у браузері → RawBT (відладка) */
 function emit(canvas, cpcl){
-  if (nativeBtAvailable()){ btSend(cpcl); return; }
+  if (nativeBtAvailable()){ btSend(toCpclRaster(canvas, cc())); return; }
   printLabel(canvas);
 }
 
@@ -885,15 +901,15 @@ $('set-save').onclick = ()=>{
 $('set-sync').onclick = syncBase;
 $('set-retry').onclick = retryPend;
 $('set-test').onclick = ()=>{
-  if (nativeBtAvailable()){ btSend(cpclTest()); return; }   // APK → нативний CPCL-друк
-  const [c,x] = newLabel();
-  x.textAlign='center'; x.font='900 120px sans-serif'; x.fillText('ТЕСТ', LBL/2, 200);
-  const bc = barcode('TEST-0001', 600, 180); if (bc) x.drawImage(bc, 100, 260);
-  x.font='bold 44px monospace'; x.fillText('TEST-0001', LBL/2, 510);
-  x.font='32px sans-serif'; x.fillText('РЦ-1 · Citizen CMP · 100×100 мм', LBL/2, 590);
-  x.fillRect(20,20,LBL-40,6); x.fillRect(20,LBL-26,LBL-40,6);
-  x.fillRect(20,20,6,LBL-40); x.fillRect(LBL-26,20,6,LBL-40);
-  printLabel(c);
+  const [c,x] = newLabel(); frame(x);
+  hbar(x,28,66,'ТЕСТ ДРУКУ');
+  x.fillStyle='#000'; x.textAlign='center';
+  x.font='bold 34px sans-serif'; x.fillText('Кирилиця: Ряд Стелаж Полка', LBL/2, 160);
+  x.font='900 150px sans-serif'; x.fillText('01-01-A', LBL/2, 320);
+  const bc = barcode('010101A', 600, 150); if (bc) x.drawImage(bc, (LBL-600)/2, 370);
+  x.fillStyle='#000'; x.font='bold 36px monospace'; x.fillText('РЦ-1 · v2.2', LBL/2, 590);
+  x.textAlign='left'; footer(x);
+  emit(c);
 };
 $('zpl-copy').onclick = ()=>{
   $('zpl-text').select(); document.execCommand('copy'); toast('ZPL скопійовано','ok');
