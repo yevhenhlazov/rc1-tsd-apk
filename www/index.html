@@ -235,13 +235,14 @@
 
     <button class="btn" id="set-save">Зберегти налаштування</button>
     <button class="btn sec" id="set-sync">⟳ Оновити базу SKU</button>
-    <button class="btn sec" id="set-test">Тест 1: ТЕКСТ (CPCL)</button>
-    <button class="btn sec" id="set-test-eg">Тест 2: EG-растр</button>
+    <button class="btn sec" id="set-test">A: EG вузька (200pt)</button>
+    <button class="btn sec" id="set-test-eg">B: EG середня (400pt)</button>
+    <button class="btn sec" id="set-test-c">C: EG широка (800pt)</button>
     <button class="btn sec" id="set-retry">Відправити чергу офлайн <span class="pill" id="pend-count2">0</span></button>
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v2.7 · 2026-06-17</b> · гібрид + connectAndPrint (як робочі тести)
+      <b style="color:var(--c-sku)">Збірка: v2.8 · 2026-06-17</b> · діагностика межі EG (A/B/C)
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -908,40 +909,24 @@ $('set-save').onclick = ()=>{
 };
 $('set-sync').onclick = syncBase;
 $('set-retry').onclick = retryPend;
-/* ТЕСТ 1 — ЛИШЕ CPCL-текст + штрихкод (точно як робоча v1.9), connectAndPrint без чанків.
-   Якщо ЦЕ друкує → транспорт і CPCL-режим принтера справні. Якщо ні → принтер не в CPCL / не під'єднаний. */
-async function diagText(){
+/* ДІАГНОСТИКА МЕЖІ EG: один чорний прямокутник заданої ширини (точок) × 50, через connectAndPrint.
+   Тиснемо A → якщо завис, вийми батарею, перезавантаж, тисни B, і т.д.
+   Так знайдемо безпечну ширину растру (підписи робитимемо вужче за неї). */
+async function egSizeTest(dots){
   const Bt = btPlugin();
   if (!Bt){ toast('BT-плагін не підвантажився','err'); return; }
-  const cpcl =
-    '! 0 200 200 220 1\r\n'+
-    'TEXT 4 0 30 20 TEXT-TEST v2.5\r\n'+
-    'TEXT 7 0 30 80 Ryad Stelazh Polka\r\n'+
-    'BARCODE 128 1 2 90 30 130 12345\r\n'+
-    'FORM\r\nPRINT\r\n';
+  const bpr = Math.ceil(dots/8), h = 50;
+  let hex=''; for(let i=0;i<bpr*h;i++) hex += 'FF';
+  const cpcl = '! 0 200 200 100 1\r\nEG '+bpr+' '+h+' 0 20 '+hex+'\r\nFORM\r\nPRINT\r\n';
   try{
-    toast('Тест ТЕКСТ…','ok');
+    toast('EG '+dots+'pt ('+(bpr*h)+' Б)…','ok');
     await Bt.connectAndPrint({ address: PRINTER_MAC, data: cpcl });
     toast('Відправлено ✓','ok');
   }catch(err){ toast('BT: '+((err&&err.message)||err),'err'); }
 }
-/* ТЕСТ 2 — ЛИШЕ EG-растр (без тексту), окремою етикеткою.
-   Якщо Тест1 друкує, а Тест2 ні → принтер не виконує EG → кирилицю-растр робитимемо інакше. */
-async function diagEG(){
-  const Bt = btPlugin();
-  if (!Bt){ toast('BT-плагін не підвантажився','err'); return; }
-  let box=''; for(let i=0;i<8*120;i++) box+='FF';     // 64×120 чорний прямокутник
-  const cpcl =
-    '! 0 200 200 160 1\r\n'+
-    'EG 8 120 30 20 '+box+'\r\n'+
-    'FORM\r\nPRINT\r\n';
-  try{
-    toast('Тест EG…','ok');
-    await Bt.connectAndPrint({ address: PRINTER_MAC, data: cpcl });
-    toast('Відправлено ✓','ok');
-  }catch(err){ toast('BT: '+((err&&err.message)||err),'err'); }
-}
-$('set-test').onclick = diagText;
+$('set-test').onclick   = ()=> egSizeTest(200);   // bpr25×50 = 1250 Б
+$('set-test-eg').onclick= ()=> egSizeTest(400);   // bpr50×50 = 2500 Б
+$('set-test-c').onclick = ()=> egSizeTest(800);   // bpr100×50 = 5000 Б
 $('set-test-eg').onclick = diagEG;
 $('zpl-copy').onclick = ()=>{
   $('zpl-text').select(); document.execCommand('copy'); toast('ZPL скопійовано','ok');
