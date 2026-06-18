@@ -242,7 +242,7 @@
     <div class="hint" style="margin-top:10px">
       Принтер: Citizen CMP-40L, 100×100 мм, 203 dpi.<br>
       Сканер ТСД: режим Fill in EditText + суфікс Enter.<br>
-      <b style="color:var(--c-sku)">Збірка: v3.3 · 2026-06-18</b> · відступи ШК + targetSdk 34 (без блоку Play Захисту)
+      <b style="color:var(--c-sku)">Збірка: v3.4 · 2026-06-18</b> · без підписів ряд/стелаж/полка, адреса крупніша
     </div>
     <div id="zpl-box" style="display:none">
       <label style="font-size:13px;color:var(--mut)">ZPL останньої етикетки:</label>
@@ -547,17 +547,16 @@ function cpclHdr(title, yTop, h){
           'LINE 40 '+lineY+' 760 '+lineY+' 2'];
 }
 
-/* ЕТИКЕТКА КОМІРКИ (полиця): зона MISCE, RYAD/STELAZH/POLKA, ВЕЛИКА адреса + ШК — все рідним CPCL */
+/* ЕТИКЕТКА КОМІРКИ (полиця): зона MISCE, ВЕЛИКА жирна адреса + ШК — все рідним CPCL */
 function cpclAddr(addr){
-  addr = clean(addr); const [pp,ss,lvl] = addrParts(addr);
-  const m = magFit(addr, 700, 5);                 // адреса ~ до 5× (≤120 dots), щоб не лізла на ШК
-  return ['! 0 200 200 600 '+cc(), 'PW 800', 'CENTER']
+  addr = clean(addr);
+  const m = magFit(addr, 760, 6);                 // адреса крупніша/жирніша (до 6×)
+  return ['! 0 200 200 560 '+cc(), 'PW 800', 'CENTER']
     .concat(cpclHdr('MISCE', 25, 50))
     .concat([
-      'SETMAG 2 2', 'TEXT 7 0 0 100 RYAD '+pp+'   STELAZH '+ss+'   POLKA '+lvl, 'SETMAG 0 0',
-      'SETMAG '+m+' '+m, 'TEXT 7 0 0 165 '+addr, 'SETMAG 0 0',
-      'BARCODE 128 3 3 140 0 320 '+addr,           // ШК нижче з відступом ~35
-      'SETMAG 2 2', 'TEXT 7 0 0 490 '+addr, 'SETMAG 0 0',
+      'SETMAG '+m+' '+m, 'TEXT 7 0 0 110 '+addr, 'SETMAG 0 0',
+      'BARCODE 128 3 3 150 0 300 '+addr,           // ШК нижче з відступом
+      'SETMAG 2 2', 'TEXT 7 0 0 470 '+addr, 'SETMAG 0 0',
       'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
@@ -566,8 +565,8 @@ function cpclSkuAddr(rec){
   const sku = clean(rec.sku), addr = clean(rec.addr || '??-??-?');
   const sku4 = sku.slice(-4); const [pp,ss,lvl] = addrParts(addr);
   const s4 = magFit(sku4, 700, 5);    // SKU-4 — до 5× (≤120 dots)
-  const am = magFit(addr, 640, 4);    // адреса — до 4× (≤96 dots)
-  return ['! 0 200 200 800 '+cc(), 'PW 800', 'CENTER']
+  const am = magFit(addr, 700, 5);    // адреса крупніша/жирніша (до 5×)
+  return ['! 0 200 200 790 '+cc(), 'PW 800', 'CENTER']
     .concat(cpclHdr('SKU', 22, 46))
     .concat([
       'SETMAG '+s4+' '+s4, 'TEXT 7 0 0 85 '+sku4, 'SETMAG 0 0',
@@ -575,10 +574,9 @@ function cpclSkuAddr(rec){
       'SETMAG 1 1', 'TEXT 7 0 0 360 SKU '+sku, 'SETMAG 0 0'])
     .concat(cpclHdr('MISCE', 410, 46))
     .concat([
-      'SETMAG 2 2', 'TEXT 7 0 0 485 RYAD '+pp+'  STELAZH '+ss+'  POLKA '+lvl, 'SETMAG 0 0',
-      'SETMAG '+am+' '+am, 'TEXT 7 0 0 545 '+addr, 'SETMAG 0 0',
-      'BARCODE 128 2 2 90 0 665 '+addr,            // відступ від адреси ~25
-      'SETMAG 1 1', 'TEXT 7 0 0 770 '+addr, 'SETMAG 0 0',
+      'SETMAG '+am+' '+am, 'TEXT 7 0 0 480 '+addr, 'SETMAG 0 0',
+      'BARCODE 128 2 2 90 0 630 '+addr,            // відступ від адреси
+      'SETMAG 1 1', 'TEXT 7 0 0 745 '+addr, 'SETMAG 0 0',
       'LEFT', 'FORM', 'PRINT', '']).join('\r\n');
 }
 
